@@ -73,10 +73,7 @@ async fn mcp_post(
     tracing::info!(method = %msg.method, "MCP request");
     match msg.method.as_str() {
         "initialize" => handle_initialize(msg),
-        "tools/list" => {
-            require_mcp_auth(&headers).await?;
-            handle_tools_list(msg)
-        }
+        "tools/list" => handle_tools_list(msg),
         "tools/call" => {
             let user = require_mcp_auth(&headers).await?;
             tracing::info!(user_sub = %user.sub, "MCP tools/call");
