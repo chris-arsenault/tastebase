@@ -48,8 +48,8 @@ export function RecipeList({ recipes, loading, error, onSelect }: Readonly<Recip
           onClick={() => onSelect(recipe)}
         >
           <div className="recipe-card-image">
-            {recipe.cover_image_url ? (
-              <img src={recipe.cover_image_url} alt={recipe.title} loading="lazy" />
+            {recipe.coverImageUrl ? (
+              <img src={recipe.coverImageUrl} alt={recipe.title} loading="lazy" />
             ) : (
               <div className="recipe-card-image-empty">{"\uD83D\uDCD6"}</div>
             )}
@@ -63,8 +63,8 @@ export function RecipeList({ recipes, loading, error, onSelect }: Readonly<Recip
               <p className="recipe-card-description">{recipe.description}</p>
             )}
             <div className="recipe-card-meta">
-              <span className="recipe-card-servings">{recipe.base_servings} serving{recipe.base_servings !== 1 ? "s" : ""}</span>
-              <span className="recipe-card-date">{formatDate(recipe.created_at)}</span>
+              <span className="recipe-card-servings">{recipe.baseServings} serving{recipe.baseServings !== 1 ? "s" : ""}</span>
+              <span className="recipe-card-date">{formatDate(recipe.createdAt)}</span>
             </div>
           </div>
         </button>

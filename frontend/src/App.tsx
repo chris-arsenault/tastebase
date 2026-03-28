@@ -1,5 +1,5 @@
 import "./App.css";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { useTastings } from "./hooks/useTastings";
 import { useFilters } from "./hooks/useFilters";
@@ -33,6 +33,33 @@ const themeClass: Record<string, string> = {
   sauce: "theme-sauce",
   all: "theme-sauce"
 };
+
+function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+type RouteState =
+  | { section: "tastings"; recipeSlug: null }
+  | { section: "recipes"; recipeSlug: null }
+  | { section: "recipes"; recipeSlug: string };
+
+function parseHash(): RouteState {
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  if (hash.startsWith("recipes/")) {
+    const slug = hash.slice("recipes/".length);
+    if (slug) return { section: "recipes", recipeSlug: slug };
+    return { section: "recipes", recipeSlug: null };
+  }
+  if (hash === "recipes") {
+    return { section: "recipes", recipeSlug: null };
+  }
+  return { section: "tastings", recipeSlug: null };
+}
 
 function ContentArea({ tastings, filteredTastings, itemLabel, auth, filters }: Readonly<{
   tastings: ReturnType<typeof useTastings>;
@@ -160,15 +187,41 @@ function RecipesSection({ recipesHook, onSelect }: Readonly<{
   );
 }
 
+function useHashRouter(recipes: Recipe[]) {
+  const [route, setRoute] = useState<RouteState>(parseHash);
+
+  useEffect(() => {
+    const onHashChange = () => setRoute(parseHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const setSection = useCallback((s: AppSection) => {
+    window.location.hash = s === "recipes" ? "#/recipes" : "#/";
+  }, []);
+
+  const handleSelectRecipe = useCallback((recipe: Recipe) => {
+    window.location.hash = `#/recipes/${slugify(recipe.title)}`;
+  }, []);
+
+  const handleBackToRecipes = useCallback(() => {
+    window.location.hash = "#/recipes";
+  }, []);
+
+  const selectedRecipe = useMemo(() => {
+    if (!route.recipeSlug) return null;
+    return recipes.find((r) => slugify(r.title) === route.recipeSlug) ?? null;
+  }, [route.recipeSlug, recipes]);
+
+  return { section: route.section, selectedRecipe, setSection, handleSelectRecipe, handleBackToRecipes };
+}
+
 const App = () => {
   const { auth, menuOpen, setMenuOpen, handleSignIn, handleSignOut } = useAuth();
   const tastings = useTastings(auth);
   const { filters, setFilters, filteredTastings, activeFilterCount, resetFilters } = useFilters(tastings.tastings);
   const recipesHook = useRecipes();
-
-  const [section, setSection] = useState<AppSection>("tastings");
-  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
-  const clearSelectedRecipe = useCallback(() => setSelectedRecipe(null), []);
+  const { section, selectedRecipe, setSection, handleSelectRecipe, handleBackToRecipes } = useHashRouter(recipesHook.recipes);
   const menu = useMemo(() => ({ open: menuOpen, setOpen: setMenuOpen }), [menuOpen, setMenuOpen]);
 
   return (
@@ -200,15 +253,15 @@ const App = () => {
         />
       )}
 
-      {section === "recipes" && (
-        <RecipesSection recipesHook={recipesHook} onSelect={setSelectedRecipe} />
+      {section === "recipes" && !selectedRecipe && (
+        <RecipesSection recipesHook={recipesHook} onSelect={handleSelectRecipe} />
       )}
 
-      {selectedRecipe && (
+      {section === "recipes" && selectedRecipe && (
         <RecipeDetail
           key={selectedRecipe.id}
           recipeId={selectedRecipe.id}
-          onClose={clearSelectedRecipe}
+          onClose={handleBackToRecipes}
         />
       )}
 

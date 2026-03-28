@@ -87,36 +87,36 @@ export type RecipeSource = "claude" | "manual" | "import";
 
 export type Recipe = {
   id: string;
-  user_id: string;
+  userId: string;
   title: string;
   description: string | null;
-  base_servings: number;
+  baseServings: number;
   notes: string | null;
   source: RecipeSource;
-  source_meta: Record<string, unknown> | null;
-  cover_image_url: string | null;
-  created_at: string;
-  updated_at: string;
+  sourceMeta: Record<string, unknown> | null;
+  coverImageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type RecipeIngredient = {
   id: string;
-  recipe_id: string;
-  widget_id: string;
+  recipeId: string;
+  widgetId: string;
   name: string;
   amount: number;
   unit: string;
-  sort_order: number;
+  sortOrder: number;
 };
 
 export type RecipeStep = {
   id: string;
-  recipe_id: string;
-  widget_id: string;
+  recipeId: string;
+  widgetId: string;
   title: string;
   content: string;
-  timer_seconds: number | null;
-  sort_order: number;
+  timerSeconds: number | null;
+  sortOrder: number;
 };
 
 export type RecipeFull = Recipe & {
