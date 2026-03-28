@@ -67,6 +67,32 @@ resource "aws_iam_role_policy" "lambda" {
   })
 }
 
+# --- Archive: zip each cargo-lambda binary for deployment ---
+
+data "archive_file" "tastings_api" {
+  type        = "zip"
+  source_file = "${path.module}/../../backend/target/lambda/tastings-api/bootstrap"
+  output_path = "${path.module}/../../backend/target/lambda/tastings-api/bootstrap.zip"
+}
+
+data "archive_file" "recipes_api" {
+  type        = "zip"
+  source_file = "${path.module}/../../backend/target/lambda/recipes-api/bootstrap"
+  output_path = "${path.module}/../../backend/target/lambda/recipes-api/bootstrap.zip"
+}
+
+data "archive_file" "mcp_server" {
+  type        = "zip"
+  source_file = "${path.module}/../../backend/target/lambda/mcp-server/bootstrap"
+  output_path = "${path.module}/../../backend/target/lambda/mcp-server/bootstrap.zip"
+}
+
+data "archive_file" "processing" {
+  type        = "zip"
+  source_file = "${path.module}/../../backend/target/lambda/processing/bootstrap"
+  output_path = "${path.module}/../../backend/target/lambda/processing/bootstrap.zip"
+}
+
 # --- Tastings API ---
 
 resource "aws_lambda_function" "tastings_api" {
@@ -78,8 +104,8 @@ resource "aws_lambda_function" "tastings_api" {
   timeout       = 30
   memory_size   = 256
 
-  filename         = "${path.module}/../../backend/target/lambda/tastings-api/bootstrap.zip"
-  source_code_hash = filebase64sha256("${path.module}/../../backend/target/lambda/tastings-api/bootstrap.zip")
+  filename         = data.archive_file.tastings_api.output_path
+  source_code_hash = data.archive_file.tastings_api.output_base64sha256
 
   vpc_config {
     subnet_ids         = local.lambda_subnet_ids
@@ -104,8 +130,8 @@ resource "aws_lambda_function" "recipes_api" {
   timeout       = 30
   memory_size   = 256
 
-  filename         = "${path.module}/../../backend/target/lambda/recipes-api/bootstrap.zip"
-  source_code_hash = filebase64sha256("${path.module}/../../backend/target/lambda/recipes-api/bootstrap.zip")
+  filename         = data.archive_file.recipes_api.output_path
+  source_code_hash = data.archive_file.recipes_api.output_base64sha256
 
   vpc_config {
     subnet_ids         = local.lambda_subnet_ids
@@ -128,8 +154,8 @@ resource "aws_lambda_function" "mcp_server" {
   timeout       = 30
   memory_size   = 256
 
-  filename         = "${path.module}/../../backend/target/lambda/mcp-server/bootstrap.zip"
-  source_code_hash = filebase64sha256("${path.module}/../../backend/target/lambda/mcp-server/bootstrap.zip")
+  filename         = data.archive_file.mcp_server.output_path
+  source_code_hash = data.archive_file.mcp_server.output_base64sha256
 
   vpc_config {
     subnet_ids         = local.lambda_subnet_ids
@@ -154,8 +180,8 @@ resource "aws_lambda_function" "processing" {
   timeout       = 300
   memory_size   = 512
 
-  filename         = "${path.module}/../../backend/target/lambda/processing/bootstrap.zip"
-  source_code_hash = filebase64sha256("${path.module}/../../backend/target/lambda/processing/bootstrap.zip")
+  filename         = data.archive_file.processing.output_path
+  source_code_hash = data.archive_file.processing.output_base64sha256
 
   vpc_config {
     subnet_ids         = local.lambda_subnet_ids
