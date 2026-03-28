@@ -26,7 +26,7 @@ async fn oauth_authorization_server_metadata() -> Json<serde_json::Value> {
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "code_challenge_methods_supported": ["S256"],
-        "scopes_supported": ["openid", "profile", "email", "recipe/write", "recipe/read"]
+        "scopes_supported": ["openid", "profile", "email", "recipe.write", "recipe.read"]
     }))
 }
 
@@ -38,7 +38,7 @@ async fn oauth_protected_resource() -> Json<serde_json::Value> {
         "resource": api_url,
         "authorization_servers": [app_url],
         "bearer_methods_supported": ["header"],
-        "scopes_supported": ["recipe/write", "recipe/read"]
+        "scopes_supported": ["recipe.write", "recipe.read"]
     }))
 }
 
@@ -70,6 +70,7 @@ async fn mcp_post(
     headers: HeaderMap,
     Json(msg): Json<McpMessage>,
 ) -> Result<Json<McpResponse>, AppError> {
+    tracing::info!(method = %msg.method, "MCP request");
     match msg.method.as_str() {
         "initialize" => handle_initialize(msg),
         "tools/list" => {
@@ -78,6 +79,7 @@ async fn mcp_post(
         }
         "tools/call" => {
             let user = require_mcp_auth(&headers).await?;
+            tracing::info!(user_sub = %user.sub, "MCP tools/call");
             handle_tools_call(msg, &state, &user).await
         }
         _ => Err(AppError::BadRequest(format!("unknown method: {}", msg.method))),
@@ -280,6 +282,7 @@ async fn save_recipe(
 
     tx.commit().await?;
 
+    tracing::info!(recipe_id = %recipe_id, user_sub = %user.sub, "recipe saved via MCP");
     let url = format!("https://tastebase.ahara.io/recipes/{recipe_id}");
     Ok(serde_json::json!({
         "recipe_id": recipe_id,
@@ -318,6 +321,7 @@ fn router(state: AppState) -> Router {
 #[tokio::main]
 async fn main() -> Result<(), lambda_http::Error> {
     shared::init_tracing();
+    tracing::info!("mcp-server starting");
     let state = AppState::from_env().await;
     let app = router(state);
     lambda_http::run(app).await

@@ -9,6 +9,7 @@ locals {
 
   cognito_pool_id = nonsensitive(data.aws_ssm_parameter.cognito_user_pool_id.value)
   cognito_issuer  = "https://cognito-idp.us-east-1.amazonaws.com/${local.cognito_pool_id}"
+  cognito_jwks    = "${local.cognito_issuer}/.well-known/jwks.json"
   cognito_domain  = nonsensitive(data.aws_ssm_parameter.cognito_domain.value)
 
   db_env = {

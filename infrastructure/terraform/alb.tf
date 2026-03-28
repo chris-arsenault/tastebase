@@ -1,4 +1,8 @@
 # ALB target groups and listener rules for each Lambda
+#
+# Public reads (GET) have no jwt-validation.
+# Writes (POST/DELETE) require jwt-validation.
+# MCP has selective auth (initialize is unauthenticated) so the Lambda handles it.
 
 # --- Tastings API ---
 
@@ -21,7 +25,8 @@ resource "aws_lambda_permission" "tastings_api" {
   source_arn    = aws_lb_target_group.tastings_api.arn
 }
 
-resource "aws_lb_listener_rule" "tastings_api" {
+# Public reads
+resource "aws_lb_listener_rule" "tastings_api_read" {
   listener_arn = nonsensitive(data.aws_ssm_parameter.alb_listener_arn.value)
   priority     = 210
 
@@ -34,6 +39,44 @@ resource "aws_lb_listener_rule" "tastings_api" {
   condition {
     path_pattern {
       values = ["/tastings", "/tastings/*"]
+    }
+  }
+
+  condition {
+    http_request_method {
+      values = ["GET", "HEAD"]
+    }
+  }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tastings_api.arn
+  }
+}
+
+# Authenticated writes
+resource "aws_lb_listener_rule" "tastings_api_write" {
+  listener_arn = nonsensitive(data.aws_ssm_parameter.alb_listener_arn.value)
+  priority     = 211
+
+  condition {
+    host_header {
+      values = [local.api_hostname]
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/tastings", "/tastings/*"]
+    }
+  }
+
+  action {
+    type = "jwt-validation"
+
+    jwt_validation {
+      issuer        = local.cognito_issuer
+      jwks_endpoint = local.cognito_jwks
     }
   }
 
@@ -64,9 +107,39 @@ resource "aws_lambda_permission" "recipes_api" {
   source_arn    = aws_lb_target_group.recipes_api.arn
 }
 
-resource "aws_lb_listener_rule" "recipes_api" {
+# Public reads
+resource "aws_lb_listener_rule" "recipes_api_read" {
   listener_arn = nonsensitive(data.aws_ssm_parameter.alb_listener_arn.value)
-  priority     = 211
+  priority     = 212
+
+  condition {
+    host_header {
+      values = [local.api_hostname]
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/recipes", "/recipes/*"]
+    }
+  }
+
+  condition {
+    http_request_method {
+      values = ["GET", "HEAD"]
+    }
+  }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.recipes_api.arn
+  }
+}
+
+# Authenticated writes
+resource "aws_lb_listener_rule" "recipes_api_write" {
+  listener_arn = nonsensitive(data.aws_ssm_parameter.alb_listener_arn.value)
+  priority     = 213
 
   condition {
     host_header {
@@ -81,12 +154,25 @@ resource "aws_lb_listener_rule" "recipes_api" {
   }
 
   action {
+    type = "jwt-validation"
+
+    jwt_validation {
+      issuer        = local.cognito_issuer
+      jwks_endpoint = local.cognito_jwks
+    }
+  }
+
+  action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.recipes_api.arn
   }
 }
 
 # --- MCP Server ---
+# MCP protocol requires selective auth: initialize is unauthenticated,
+# tools/list and tools/call require a valid token. ALB can't distinguish
+# JSON-RPC methods, so the Lambda handles auth internally.
+# .well-known endpoints are also public (OAuth metadata discovery).
 
 resource "aws_lb_target_group" "mcp_server" {
   name        = "${local.prefix}-mcp-tg"
@@ -109,7 +195,7 @@ resource "aws_lambda_permission" "mcp_server" {
 
 resource "aws_lb_listener_rule" "mcp_server" {
   listener_arn = nonsensitive(data.aws_ssm_parameter.alb_listener_arn.value)
-  priority     = 212
+  priority     = 214
 
   condition {
     host_header {

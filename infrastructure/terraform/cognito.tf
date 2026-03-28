@@ -17,12 +17,12 @@ resource "aws_cognito_resource_server" "api" {
   user_pool_id = local.cognito_pool_id
 
   scope {
-    scope_name        = "recipe/write"
+    scope_name        = "recipe.write"
     scope_description = "Create and update recipes"
   }
 
   scope {
-    scope_name        = "recipe/read"
+    scope_name        = "recipe.read"
     scope_description = "Read recipes"
   }
 }
@@ -46,8 +46,8 @@ resource "aws_cognito_user_pool_client" "mcp" {
     "openid",
     "profile",
     "email",
-    "${aws_cognito_resource_server.api.identifier}/recipe/read",
-    "${aws_cognito_resource_server.api.identifier}/recipe/write",
+    "${aws_cognito_resource_server.api.identifier}/recipe.read",
+    "${aws_cognito_resource_server.api.identifier}/recipe.write",
   ]
   callback_urls                = ["https://claude.ai/api/mcp/auth_callback"]
   supported_identity_providers = ["COGNITO"]

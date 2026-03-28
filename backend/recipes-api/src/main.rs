@@ -17,6 +17,7 @@ async fn list_recipes(
     .fetch_all(&state.db)
     .await?;
 
+    tracing::info!(count = recipes.len(), "recipes listed");
     Ok(Json(serde_json::json!({ "data": recipes })))
 }
 
@@ -44,11 +45,13 @@ async fn get_recipe(
     .fetch_all(&state.db)
     .await?;
 
+    tracing::info!(recipe_id = %id, ingredients = ingredients.len(), steps = steps.len(), "recipe fetched");
     let full = RecipeFull { recipe, ingredients, steps };
     Ok(Json(serde_json::json!({ "data": full })))
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateRecipeInput {
     title: String,
     description: Option<String>,
@@ -61,6 +64,7 @@ struct CreateRecipeInput {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct IngredientInput {
     id: String,
     name: String,
@@ -69,6 +73,7 @@ struct IngredientInput {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct StepInput {
     id: String,
     title: String,
@@ -81,6 +86,21 @@ async fn create_recipe(
     RequireAuth(user): RequireAuth,
     Json(input): Json<CreateRecipeInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    tracing::info!(user_sub = %user.sub, title = %input.title, "creating recipe");
+
+    // Validate
+    shared::validate::validate_recipe_input(
+        &input.title,
+        input.description.as_deref(),
+        input.base_servings,
+        input.notes.as_deref(),
+    )?;
+
+    // Sanitize
+    let title = shared::sanitize::clean(&input.title);
+    let description = shared::sanitize::clean_option(input.description.as_deref());
+    let notes = shared::sanitize::clean_option(input.notes.as_deref());
+
     let user_id = shared::db::resolve_user(&state.db, &user.sub, user.email.as_deref()).await?;
     let recipe_id = Uuid::new_v4();
     let now = time::OffsetDateTime::now_utc();
@@ -94,10 +114,10 @@ async fn create_recipe(
     )
     .bind(recipe_id)
     .bind(user_id)
-    .bind(&input.title)
-    .bind(&input.description)
+    .bind(&title)
+    .bind(&description)
     .bind(input.base_servings)
-    .bind(&input.notes)
+    .bind(&notes)
     .bind(source)
     .bind(input.source_meta.as_ref().map(|v| sqlx::types::Json(v)))
     .bind(now)
@@ -106,13 +126,14 @@ async fn create_recipe(
 
     for (i, ing) in input.ingredients.iter().enumerate() {
         let unit = ing.unit.unwrap_or(UnitType::None);
+        let name = shared::sanitize::clean(&ing.name);
         sqlx::query(
             "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, amount, unit, sort_order)
              VALUES ($1, $2, $3, $4, $5, $6)"
         )
         .bind(recipe_id)
         .bind(&ing.id)
-        .bind(&ing.name)
+        .bind(&name)
         .bind(rust_decimal::Decimal::try_from(ing.amount).unwrap_or_default())
         .bind(unit)
         .bind(i as i32)
@@ -121,15 +142,17 @@ async fn create_recipe(
     }
 
     for (i, step) in input.steps.iter().enumerate() {
+        let step_title = shared::sanitize::clean(&step.title);
         // Store raw content with {ingredient_id} tokens intact (round-trip fidelity)
+        let content = shared::sanitize::clean(&step.content);
         sqlx::query(
             "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order)
              VALUES ($1, $2, $3, $4, $5, $6)"
         )
         .bind(recipe_id)
         .bind(&step.id)
-        .bind(&step.title)
-        .bind(&step.content)
+        .bind(&step_title)
+        .bind(&content)
         .bind(step.timer_seconds)
         .bind(i as i32)
         .execute(&mut *tx)
@@ -137,6 +160,15 @@ async fn create_recipe(
     }
 
     tx.commit().await?;
+
+    tracing::info!(
+        recipe_id = %recipe_id,
+        user_id = %user_id,
+        source = ?source,
+        ingredients = input.ingredients.len(),
+        steps = input.steps.len(),
+        "recipe created"
+    );
 
     let url = format!("https://tastebase.ahara.io/recipes/{recipe_id}");
     Ok(Json(serde_json::json!({
@@ -152,7 +184,6 @@ async fn delete_recipe(
     Path(id): Path<Uuid>,
 ) -> Result<axum::http::StatusCode, AppError> {
     let user_id = shared::db::resolve_user(&state.db, &user.sub, user.email.as_deref()).await?;
-    // CASCADE deletes ingredients, steps
     let result = sqlx::query("DELETE FROM recipes WHERE id = $1 AND user_id = $2")
         .bind(id)
         .bind(user_id)
@@ -162,6 +193,7 @@ async fn delete_recipe(
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound);
     }
+    tracing::info!(recipe_id = %id, user_id = %user_id, "recipe deleted");
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
@@ -175,6 +207,7 @@ fn router(state: AppState) -> Router {
 #[tokio::main]
 async fn main() -> Result<(), lambda_http::Error> {
     shared::init_tracing();
+    tracing::info!("recipes-api starting");
     let state = AppState::from_env().await;
     let app = router(state);
     lambda_http::run(app).await

@@ -2,7 +2,9 @@ pub mod auth;
 pub mod db;
 pub mod error;
 pub mod media;
+pub mod sanitize;
 pub mod types;
+pub mod validate;
 
 use sqlx::PgPool;
 

@@ -5,6 +5,7 @@ use uuid::Uuid;
 // -- Users --
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct User {
     pub id: Uuid,
     pub email: String,
@@ -13,6 +14,7 @@ pub struct User {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct CognitoUser {
     pub cognito_sub: String,
     pub user_id: Uuid,
@@ -47,6 +49,7 @@ pub enum ProcessingStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NutritionFacts {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub serving_size: Option<String>,
@@ -65,6 +68,7 @@ pub struct NutritionFacts {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct Tasting {
     pub id: Uuid,
     pub user_id: Option<Uuid>,
@@ -101,6 +105,7 @@ pub struct Tasting {
 
 /// Public-facing tasting (strips internal fields like voice_key).
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TastingPublic {
     pub id: Uuid,
     pub product_type: Option<ProductType>,
@@ -205,6 +210,7 @@ pub enum UnitType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct Recipe {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -220,6 +226,7 @@ pub struct Recipe {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct RecipeIngredient {
     pub id: Uuid,
     pub recipe_id: Uuid,
@@ -231,6 +238,7 @@ pub struct RecipeIngredient {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct RecipeStep {
     pub id: Uuid,
     pub recipe_id: Uuid,
@@ -243,6 +251,7 @@ pub struct RecipeStep {
 
 /// Full recipe with nested ingredients and steps for API responses.
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RecipeFull {
     #[serde(flatten)]
     pub recipe: Recipe,
