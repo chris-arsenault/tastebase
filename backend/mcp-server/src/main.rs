@@ -65,6 +65,9 @@ struct McpResponse {
     result: serde_json::Value,
 }
 
+// Auth is handled by ALB jwt-validation. The ALB validates the JWT and
+// forwards the request with the token still in the Authorization header.
+// We extract the user identity from the token claims.
 async fn mcp_post(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -75,7 +78,7 @@ async fn mcp_post(
         "initialize" => handle_initialize(msg),
         "tools/list" => handle_tools_list(msg),
         "tools/call" => {
-            let user = require_mcp_auth(&headers).await?;
+            let user = extract_user_from_token(&headers).await?;
             tracing::info!(user_sub = %user.sub, "MCP tools/call");
             handle_tools_call(msg, &state, &user).await
         }
@@ -83,7 +86,9 @@ async fn mcp_post(
     }
 }
 
-async fn require_mcp_auth(headers: &HeaderMap) -> Result<shared::types::UserContext, AppError> {
+/// Extract user identity from the ALB-validated JWT.
+/// ALB already validated the token; we just need the claims.
+async fn extract_user_from_token(headers: &HeaderMap) -> Result<shared::types::UserContext, AppError> {
     let auth_header = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok());
