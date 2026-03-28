@@ -150,7 +150,7 @@ Guidelines:
         let obj = raw.as_object()?;
         Some(NutritionFacts {
             serving_size: obj.get("serving_size").and_then(|v| v.as_str()).map(String::from),
-            calories: obj.get("calories").and_then(|v| normalize_number(v)).map(|n| n as i32),
+            calories: obj.get("calories").and_then(normalize_number).map(|n| n as i32),
             total_fat: obj.get("total_fat").and_then(|v| v.as_str()).map(String::from),
             sodium: obj.get("sodium").and_then(|v| v.as_str()).map(String::from),
             total_carbs: obj.get("total_carbs").and_then(|v| v.as_str()).map(String::from),
@@ -295,10 +295,10 @@ pub async fn extract_voice_metrics(
 
     Ok(VoiceMetrics {
         score: clamp_score_i16(
-            parsed.get("score").and_then(|v| normalize_number(v)),
+            parsed.get("score").and_then(normalize_number),
         ),
         heat_user: clamp_score_i16(
-            parsed.get("heat_user").and_then(|v| normalize_number(v)),
+            parsed.get("heat_user").and_then(normalize_number),
         ),
     })
 }

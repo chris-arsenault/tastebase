@@ -1,5 +1,5 @@
 import "./App.css";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { useTastings } from "./hooks/useTastings";
 import { useFilters } from "./hooks/useFilters";
@@ -76,6 +76,90 @@ function ContentArea({ tastings, filteredTastings, itemLabel, auth, filters }: R
   );
 }
 
+function TastingsSection({ tastings, filters, setFilters, filteredTastings, activeFilterCount, resetFilters, auth }: Readonly<{
+  tastings: ReturnType<typeof useTastings>;
+  filters: ReturnType<typeof useFilters>["filters"];
+  setFilters: ReturnType<typeof useFilters>["setFilters"];
+  filteredTastings: ReturnType<typeof useFilters>["filteredTastings"];
+  activeFilterCount: number;
+  resetFilters: () => void;
+  auth: ReturnType<typeof useAuth>["auth"];
+}>) {
+  const searchPlaceholder = searchPlaceholders[filters.productType] ?? "Search...";
+  const itemLabel = itemLabels[filters.productType] ?? "item";
+  const manualFields = useMemo(() => ({ value: tastings.showManualFields, set: tastings.setShowManualFields }), [tastings.showManualFields, tastings.setShowManualFields]);
+  const mediaExpanded = useMemo(() => ({ value: tastings.mediaExpanded, set: tastings.setMediaExpanded }), [tastings.mediaExpanded, tastings.setMediaExpanded]);
+
+  return (
+    <>
+      <SearchBar
+        filters={filters}
+        setFilters={setFilters}
+        activeFilterCount={activeFilterCount}
+        searchPlaceholder={searchPlaceholder}
+        onReset={resetFilters}
+      />
+
+      {tastings.errorMessage && <div className="error-banner">{tastings.errorMessage}</div>}
+
+      {tastings.formOpen && (
+        <TastingForm
+          formMode={tastings.formMode}
+          form={tastings.form}
+          setForm={tastings.setForm}
+          manualFields={manualFields}
+          mediaExpanded={mediaExpanded}
+          submitStatus={tastings.submitStatus}
+          viewingRecord={tastings.viewingRecord}
+          productType={filters.productType}
+          onSubmit={tastings.handleSubmit}
+          onClose={tastings.closeForm}
+          onError={tastings.setErrorMessage}
+        />
+      )}
+
+      {tastings.viewOpen && tastings.viewingRecord && (
+        <ViewModal record={tastings.viewingRecord} onClose={tastings.closeViewModal} />
+      )}
+
+      <main className="content">
+        <div className="content-header">
+          <span className="content-count">{filteredTastings.length} {filteredTastings.length === 1 ? itemLabel : `${itemLabel}s`}</span>
+        </div>
+        <ContentArea tastings={tastings} filteredTastings={filteredTastings} itemLabel={itemLabel} auth={auth} filters={filters} />
+      </main>
+
+      {tastings.deleteTarget && (
+        <DeleteModal
+          target={tastings.deleteTarget}
+          deleting={tastings.deleteStatus === "deleting"}
+          onConfirm={tastings.confirmDelete}
+          onClose={tastings.closeDeleteModal}
+        />
+      )}
+    </>
+  );
+}
+
+function RecipesSection({ recipesHook, onSelect }: Readonly<{
+  recipesHook: ReturnType<typeof useRecipes>;
+  onSelect: (recipe: Recipe) => void;
+}>) {
+  return (
+    <main className="content">
+      <div className="content-header">
+        <span className="content-count">{recipesHook.recipes.length} recipe{recipesHook.recipes.length !== 1 ? "s" : ""}</span>
+      </div>
+      <RecipeList
+        recipes={recipesHook.recipes}
+        loading={recipesHook.loading}
+        error={recipesHook.error}
+        onSelect={onSelect}
+      />
+    </main>
+  );
+}
+
 const App = () => {
   const { auth, menuOpen, setMenuOpen, handleSignIn, handleSignOut } = useAuth();
   const tastings = useTastings(auth);
@@ -84,11 +168,8 @@ const App = () => {
 
   const [section, setSection] = useState<AppSection>("tastings");
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
-
-  const searchPlaceholder = searchPlaceholders[filters.productType] ?? "Search...";
-  const itemLabel = itemLabels[filters.productType] ?? "item";
-  const manualFields = useMemo(() => ({ value: tastings.showManualFields, set: tastings.setShowManualFields }), [tastings.showManualFields, tastings.setShowManualFields]);
-  const mediaExpanded = useMemo(() => ({ value: tastings.mediaExpanded, set: tastings.setMediaExpanded }), [tastings.mediaExpanded, tastings.setMediaExpanded]);
+  const clearSelectedRecipe = useCallback(() => setSelectedRecipe(null), []);
+  const menu = useMemo(() => ({ open: menuOpen, setOpen: setMenuOpen }), [menuOpen, setMenuOpen]);
 
   return (
     <div className={`app ${themeClass[filters.productType] ?? "theme-sauce"}`}>
@@ -99,8 +180,7 @@ const App = () => {
         section={section}
         onSectionChange={setSection}
         formOpen={tastings.formOpen}
-        menuOpen={menuOpen}
-        setMenuOpen={setMenuOpen}
+        menu={menu}
         onAdd={tastings.openAddForm}
         onCloseForm={tastings.closeForm}
         onSignIn={handleSignIn}
@@ -109,73 +189,26 @@ const App = () => {
       />
 
       {section === "tastings" && (
-        <>
-          <SearchBar
-            filters={filters}
-            setFilters={setFilters}
-            activeFilterCount={activeFilterCount}
-            searchPlaceholder={searchPlaceholder}
-            onReset={resetFilters}
-          />
-
-          {tastings.errorMessage && <div className="error-banner">{tastings.errorMessage}</div>}
-
-          {tastings.formOpen && (
-            <TastingForm
-              formMode={tastings.formMode}
-              form={tastings.form}
-              setForm={tastings.setForm}
-              manualFields={manualFields}
-              mediaExpanded={mediaExpanded}
-              submitStatus={tastings.submitStatus}
-              viewingRecord={tastings.viewingRecord}
-              productType={filters.productType}
-              onSubmit={tastings.handleSubmit}
-              onClose={tastings.closeForm}
-              onError={tastings.setErrorMessage}
-            />
-          )}
-
-          {tastings.viewOpen && tastings.viewingRecord && (
-            <ViewModal record={tastings.viewingRecord} onClose={tastings.closeViewModal} />
-          )}
-
-          <main className="content">
-            <div className="content-header">
-              <span className="content-count">{filteredTastings.length} {filteredTastings.length === 1 ? itemLabel : `${itemLabel}s`}</span>
-            </div>
-            <ContentArea tastings={tastings} filteredTastings={filteredTastings} itemLabel={itemLabel} auth={auth} filters={filters} />
-          </main>
-
-          {tastings.deleteTarget && (
-            <DeleteModal
-              target={tastings.deleteTarget}
-              deleting={tastings.deleteStatus === "deleting"}
-              onConfirm={tastings.confirmDelete}
-              onClose={tastings.closeDeleteModal}
-            />
-          )}
-        </>
+        <TastingsSection
+          tastings={tastings}
+          filters={filters}
+          setFilters={setFilters}
+          filteredTastings={filteredTastings}
+          activeFilterCount={activeFilterCount}
+          resetFilters={resetFilters}
+          auth={auth}
+        />
       )}
 
       {section === "recipes" && (
-        <main className="content">
-          <div className="content-header">
-            <span className="content-count">{recipesHook.recipes.length} recipe{recipesHook.recipes.length !== 1 ? "s" : ""}</span>
-          </div>
-          <RecipeList
-            recipes={recipesHook.recipes}
-            loading={recipesHook.loading}
-            error={recipesHook.error}
-            onSelect={setSelectedRecipe}
-          />
-        </main>
+        <RecipesSection recipesHook={recipesHook} onSelect={setSelectedRecipe} />
       )}
 
       {selectedRecipe && (
         <RecipeDetail
+          key={selectedRecipe.id}
           recipeId={selectedRecipe.id}
-          onClose={() => setSelectedRecipe(null)}
+          onClose={clearSelectedRecipe}
         />
       )}
 

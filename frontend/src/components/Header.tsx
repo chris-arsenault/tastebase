@@ -1,4 +1,4 @@
-import type { SubmitEvent } from "react";
+import { useCallback, type SubmitEvent } from "react";
 import type { AuthState } from "../hooks/useAuth";
 import type { Filters, ProductType } from "../types";
 
@@ -39,6 +39,76 @@ function AuthMenu({ auth, onSignIn, onSignOut, onError }: Readonly<{
   return <div className="menu-loading">Loading...</div>;
 }
 
+function SectionToggle({ section, onSectionChange }: Readonly<{
+  section: AppSection;
+  onSectionChange: (section: AppSection) => void;
+}>) {
+  return (
+    <div className="section-toggle">
+      <button className={section === "tastings" ? "active" : ""} onClick={() => onSectionChange("tastings")}>
+        Tastings
+      </button>
+      <button className={section === "recipes" ? "active" : ""} onClick={() => onSectionChange("recipes")}>
+        Recipes
+      </button>
+    </div>
+  );
+}
+
+function ProductToggle({ productType, setProductType }: Readonly<{
+  productType: string;
+  setProductType: (pt: ProductType | "all") => void;
+}>) {
+  return (
+    <div className="product-toggle">
+      <button className={productType === "sauce" ? "active" : ""} onClick={() => setProductType("sauce")} title="Hot Sauces">
+        Sauces
+      </button>
+      <button className={productType === "all" ? "active" : ""} onClick={() => setProductType("all")} title="All Items">
+        All
+      </button>
+      <button className={productType === "drink" ? "active" : ""} onClick={() => setProductType("drink")} title="Drinks">
+        Drinks
+      </button>
+    </div>
+  );
+}
+
+type MenuState = { open: boolean; setOpen: (open: boolean) => void };
+
+function HeaderActions({ auth, section, formOpen, menu, onAdd, onCloseForm, onSignIn, onSignOut, onError }: Readonly<{
+  auth: AuthState;
+  section: AppSection;
+  formOpen: boolean;
+  menu: MenuState;
+  onAdd: () => void;
+  onCloseForm: () => void;
+  onSignIn: (event: SubmitEvent<HTMLFormElement>, onError: (msg: string) => void) => void;
+  onSignOut: () => void;
+  onError: (msg: string) => void;
+}>) {
+  return (
+    <div className="header-actions">
+      {auth.status === "signedIn" && section === "tastings" && (
+        <button className="add-btn" onClick={() => (formOpen ? onCloseForm() : onAdd())} title={formOpen ? "Close" : "Add tasting"}>
+          {formOpen ? "\u00d7" : "+"}
+        </button>
+      )}
+
+      <div className="menu-container">
+        <button className="menu-btn" onClick={(e) => { e.stopPropagation(); menu.setOpen(!menu.open); }} aria-label="Menu">
+          <span className="menu-icon" />
+        </button>
+        {menu.open && (
+          <div className="menu-dropdown">
+            <AuthMenu auth={auth} onSignIn={onSignIn} onSignOut={onSignOut} onError={onError} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 type HeaderProps = {
   auth: AuthState;
   filters: Filters;
@@ -46,8 +116,7 @@ type HeaderProps = {
   section: AppSection;
   onSectionChange: (section: AppSection) => void;
   formOpen: boolean;
-  menuOpen: boolean;
-  setMenuOpen: (open: boolean) => void;
+  menu: MenuState;
   onAdd: () => void;
   onCloseForm: () => void;
   onSignIn: (event: SubmitEvent<HTMLFormElement>, onError: (msg: string) => void) => void;
@@ -55,8 +124,8 @@ type HeaderProps = {
   onError: (msg: string) => void;
 };
 
-export function Header({ auth, filters, setFilters, section, onSectionChange, formOpen, menuOpen, setMenuOpen, onAdd, onCloseForm, onSignIn, onSignOut, onError }: Readonly<HeaderProps>) {
-  const setProductType = (pt: ProductType | "all") => setFilters((f) => ({ ...f, productType: pt }));
+export function Header({ auth, filters, setFilters, section, onSectionChange, formOpen, menu, onAdd, onCloseForm, onSignIn, onSignOut, onError }: Readonly<HeaderProps>) {
+  const setProductType = useCallback((pt: ProductType | "all") => setFilters((f) => ({ ...f, productType: pt })), [setFilters]);
 
   return (
     <header className="header">
@@ -66,48 +135,23 @@ export function Header({ auth, filters, setFilters, section, onSectionChange, fo
       </div>
 
       <div className="header-nav">
-        <div className="section-toggle">
-          <button className={section === "tastings" ? "active" : ""} onClick={() => onSectionChange("tastings")}>
-            Tastings
-          </button>
-          <button className={section === "recipes" ? "active" : ""} onClick={() => onSectionChange("recipes")}>
-            Recipes
-          </button>
-        </div>
-
+        <SectionToggle section={section} onSectionChange={onSectionChange} />
         {section === "tastings" && (
-          <div className="product-toggle">
-            <button className={filters.productType === "sauce" ? "active" : ""} onClick={() => setProductType("sauce")} title="Hot Sauces">
-              Sauces
-            </button>
-            <button className={filters.productType === "all" ? "active" : ""} onClick={() => setProductType("all")} title="All Items">
-              All
-            </button>
-            <button className={filters.productType === "drink" ? "active" : ""} onClick={() => setProductType("drink")} title="Drinks">
-              Drinks
-            </button>
-          </div>
+          <ProductToggle productType={filters.productType} setProductType={setProductType} />
         )}
       </div>
 
-      <div className="header-actions">
-        {auth.status === "signedIn" && section === "tastings" && (
-          <button className="add-btn" onClick={() => (formOpen ? onCloseForm() : onAdd())} title={formOpen ? "Close" : "Add tasting"}>
-            {formOpen ? "\u00d7" : "+"}
-          </button>
-        )}
-
-        <div className="menu-container">
-          <button className="menu-btn" onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }} aria-label="Menu">
-            <span className="menu-icon" />
-          </button>
-          {menuOpen && (
-            <div className="menu-dropdown">
-              <AuthMenu auth={auth} onSignIn={onSignIn} onSignOut={onSignOut} onError={onError} />
-            </div>
-          )}
-        </div>
-      </div>
+      <HeaderActions
+        auth={auth}
+        section={section}
+        formOpen={formOpen}
+        menu={menu}
+        onAdd={onAdd}
+        onCloseForm={onCloseForm}
+        onSignIn={onSignIn}
+        onSignOut={onSignOut}
+        onError={onError}
+      />
     </header>
   );
 }

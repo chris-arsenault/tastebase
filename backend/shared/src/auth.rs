@@ -64,12 +64,11 @@ async fn get_decoding_key(kid: &str) -> Result<DecodingKey, AppError> {
     // Try cache first
     {
         let cache = jwks_lock().read().await;
-        if let Some(ref c) = *cache {
-            if let Some(key) = c.keys.iter().find(|k| k.kid == kid) {
+        if let Some(ref c) = *cache
+            && let Some(key) = c.keys.iter().find(|k| k.kid == kid) {
                 return DecodingKey::from_rsa_components(&key.n, &key.e)
                     .map_err(|e| AppError::Internal(format!("bad RSA key: {e}")));
             }
-        }
     }
     // Refresh cache
     let keys = fetch_jwks().await?;

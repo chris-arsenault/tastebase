@@ -248,7 +248,7 @@ async fn save_recipe(
 
     for (i, ing) in params.ingredients.iter().enumerate() {
         let unit = ing.unit.as_deref()
-            .and_then(|u| parse_unit(u))
+            .and_then(parse_unit)
             .unwrap_or(UnitType::None);
 
         sqlx::query(

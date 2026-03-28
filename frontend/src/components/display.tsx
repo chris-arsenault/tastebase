@@ -23,6 +23,7 @@ export const HeatSlider = ({ value, onChange, label }: { value: string; onChange
           onChange={(e) => onChange(e.target.value === "0" ? "" : e.target.value)}
           className="range-input"
         />
+        {/* eslint-disable-next-line local/no-inline-styles -- CSS custom property for dynamic fill width */}
         <div className="slider-fill heat-fill" style={{ '--fill-width': `${(numValue / 5) * 100}%` } as React.CSSProperties} />
         <div className="slider-peppers">
           {[1, 2, 3, 4, 5].map((level) => (
@@ -51,6 +52,7 @@ export const ScoreSlider = ({ value, onChange, label }: { value: string; onChang
           onChange={(e) => onChange(e.target.value === "0" ? "" : e.target.value)}
           className="range-input"
         />
+        {/* eslint-disable-next-line local/no-inline-styles -- CSS custom property for dynamic fill width */}
         <div className="slider-fill score-fill" style={{ '--fill-width': `${(numValue / 10) * 100}%` } as React.CSSProperties} />
       </div>
       <span className="slider-value">{hasValue && numValue > 0 ? `${numValue}+` : "Any"}</span>
@@ -124,6 +126,7 @@ export const ScoreDisplay = ({ value }: { value: number | null }) => {
   return (
     <div className="score-display">
       <div className="score-bar">
+        {/* eslint-disable-next-line local/no-inline-styles -- CSS custom property for dynamic fill width */}
         <div className="score-fill" style={{ '--fill-width': percentage } as React.CSSProperties} />
       </div>
       <span className="score-value">{value.toFixed(1)}</span>

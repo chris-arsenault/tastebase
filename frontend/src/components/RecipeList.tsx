@@ -41,13 +41,11 @@ export function RecipeList({ recipes, loading, error, onSelect }: Readonly<Recip
   return (
     <div className="recipe-grid">
       {recipes.map((recipe) => (
-        <article
+        <button
           key={recipe.id}
+          type="button"
           className="recipe-card"
-          role="button"
-          tabIndex={0}
           onClick={() => onSelect(recipe)}
-          onKeyDown={(e) => { if (e.key === "Enter") onSelect(recipe); }}
         >
           <div className="recipe-card-image">
             {recipe.cover_image_url ? (
@@ -69,7 +67,7 @@ export function RecipeList({ recipes, loading, error, onSelect }: Readonly<Recip
               <span className="recipe-card-date">{formatDate(recipe.created_at)}</span>
             </div>
           </div>
-        </article>
+        </button>
       ))}
     </div>
   );

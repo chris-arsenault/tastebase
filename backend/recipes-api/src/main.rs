@@ -119,7 +119,7 @@ async fn create_recipe(
     .bind(input.base_servings)
     .bind(&notes)
     .bind(source)
-    .bind(input.source_meta.as_ref().map(|v| sqlx::types::Json(v)))
+    .bind(input.source_meta.as_ref().map(sqlx::types::Json))
     .bind(now)
     .execute(&mut *tx)
     .await?;

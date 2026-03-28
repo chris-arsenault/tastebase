@@ -42,6 +42,7 @@ fn check_base64(field: &str, value: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn validate_tasting_input(
     name: Option<&str>,
     maker: Option<&str>,
@@ -71,11 +72,10 @@ pub fn validate_tasting_input(
 
 pub fn validate_base64_fields(fields: &[(&str, Option<&str>)]) -> Result<(), AppError> {
     for (name, value) in fields {
-        if let Some(v) = value {
-            if !v.is_empty() {
+        if let Some(v) = value
+            && !v.is_empty() {
                 check_base64(name, v)?;
             }
-        }
     }
     Ok(())
 }
