@@ -2172,7 +2172,6 @@ name = "mcp-server"
 version = "0.1.0"
 dependencies = [
  "axum",
- "base64",
  "lambda_http",
  "rust_decimal",
  "serde",
