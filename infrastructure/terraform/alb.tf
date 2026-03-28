@@ -196,8 +196,9 @@ resource "aws_lambda_permission" "mcp_server" {
   source_arn    = aws_lb_target_group.mcp_server.arn
 }
 
-# .well-known endpoints are public (OAuth metadata discovery)
-resource "aws_lb_listener_rule" "mcp_wellknown" {
+# MCP — no ALB jwt-validation. Lambda handles auth and returns
+# 401 with WWW-Authenticate header for MCP OAuth discovery.
+resource "aws_lb_listener_rule" "mcp_server" {
   listener_arn = nonsensitive(data.aws_ssm_parameter.alb_listener_arn.value)
   priority     = 214
 
@@ -209,41 +210,7 @@ resource "aws_lb_listener_rule" "mcp_wellknown" {
 
   condition {
     path_pattern {
-      values = ["/.well-known/*"]
-    }
-  }
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.mcp_server.arn
-  }
-}
-
-# MCP protocol — all requests require auth (including initialize).
-# First unauthenticated request gets 401 with WWW-Authenticate from ALB,
-# triggering the OAuth flow. After OAuth, all requests include the token.
-resource "aws_lb_listener_rule" "mcp_server" {
-  listener_arn = nonsensitive(data.aws_ssm_parameter.alb_listener_arn.value)
-  priority     = 215
-
-  condition {
-    host_header {
-      values = [local.api_hostname]
-    }
-  }
-
-  condition {
-    path_pattern {
-      values = ["/mcp"]
-    }
-  }
-
-  action {
-    type = "jwt-validation"
-
-    jwt_validation {
-      issuer        = local.cognito_issuer
-      jwks_endpoint = local.cognito_jwks
+      values = ["/mcp", "/.well-known/*"]
     }
   }
 

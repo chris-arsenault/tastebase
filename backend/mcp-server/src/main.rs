@@ -70,24 +70,48 @@ struct McpResponse {
     result: serde_json::Value,
 }
 
-// Auth is handled by ALB jwt-validation. The ALB validates the JWT and
-// forwards the request with the token still in the Authorization header.
-// We extract the user identity from the token claims.
+// MCP auth: all POST /mcp requests require a valid JWT. On failure,
+// return 401 with WWW-Authenticate header for OAuth discovery.
 async fn mcp_post(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(msg): Json<McpMessage>,
-) -> Result<Json<McpResponse>, AppError> {
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
     tracing::info!(method = %msg.method, "MCP request");
-    match msg.method.as_str() {
+
+    let user = match extract_user_from_token(&headers) {
+        Ok(u) => u,
+        Err(_) => {
+            let api_url = std::env::var("API_BASE_URL").unwrap_or_default();
+            tracing::info!(method = %msg.method, "MCP auth required, returning 401");
+            return (
+                StatusCode::UNAUTHORIZED,
+                [(
+                    "WWW-Authenticate",
+                    format!(
+                        "Bearer resource_metadata=\"{api_url}/.well-known/oauth-protected-resource\""
+                    ),
+                )],
+                Json(serde_json::json!({"message": "unauthorized"})),
+            )
+                .into_response();
+        }
+    };
+
+    let result = match msg.method.as_str() {
         "initialize" => handle_initialize(msg),
         "tools/list" => handle_tools_list(msg),
         "tools/call" => {
-            let user = extract_user_from_token(&headers)?;
             tracing::info!(user_sub = %user.sub, "MCP tools/call");
             handle_tools_call(msg, &state, &user).await
         }
         _ => Err(AppError::BadRequest(format!("unknown method: {}", msg.method))),
+    };
+
+    match result {
+        Ok(json) => json.into_response(),
+        Err(err) => err.into_response(),
     }
 }
 
