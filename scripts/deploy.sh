@@ -34,3 +34,13 @@ terraform -chdir="${TF_DIR}" init -reconfigure \
   -backend-config="use_lockfile=true"
 
 terraform -chdir="${TF_DIR}" apply -auto-approve
+
+echo ""
+echo "=== Deploy complete ==="
+echo "Frontend: $(terraform -chdir="${TF_DIR}" output -raw frontend_url)"
+echo "API:      $(terraform -chdir="${TF_DIR}" output -raw api_url)"
+echo ""
+echo "=== MCP Connector (Claude.ai Settings > Connectors) ==="
+echo "Server URL:    $(terraform -chdir="${TF_DIR}" output -raw mcp_server_url)"
+echo "Client ID:     $(terraform -chdir="${TF_DIR}" output -raw mcp_client_id)"
+echo "Client Secret: $(terraform -chdir="${TF_DIR}" output -raw mcp_client_secret)"
