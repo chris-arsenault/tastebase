@@ -21,6 +21,7 @@ async fn oauth_authorization_server_metadata() -> Json<serde_json::Value> {
         format!("https://{raw_domain}")
     };
     let issuer = std::env::var("COGNITO_ISSUER").unwrap_or_default();
+    let api_url = std::env::var("API_BASE_URL").unwrap_or_default();
 
     Json(serde_json::json!({
         "issuer": issuer,
@@ -31,7 +32,11 @@ async fn oauth_authorization_server_metadata() -> Json<serde_json::Value> {
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "code_challenge_methods_supported": ["S256"],
-        "scopes_supported": ["openid", "profile", "email", "recipe.write", "recipe.read"]
+        "scopes_supported": [
+            "openid", "profile", "email",
+            format!("{api_url}/recipe.write"),
+            format!("{api_url}/recipe.read")
+        ]
     }))
 }
 
@@ -42,7 +47,10 @@ async fn oauth_protected_resource() -> Json<serde_json::Value> {
         "resource": api_url,
         "authorization_servers": [api_url],
         "bearer_methods_supported": ["header"],
-        "scopes_supported": ["recipe.write", "recipe.read"]
+        "scopes_supported": [
+            format!("{api_url}/recipe.write"),
+            format!("{api_url}/recipe.read")
+        ]
     }))
 }
 
