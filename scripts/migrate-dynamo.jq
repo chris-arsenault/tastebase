@@ -3,7 +3,12 @@
 def esc: gsub("'"; "''");
 
 def sql_str:
-  if . == null or . == "" then "NULL"
+  if . == null then "NULL"
+  else "'" + (. | esc) + "'"
+  end;
+
+def sql_str_nn:
+  if . == null or . == "" then "''"
   else "'" + (. | esc) + "'"
   end;
 
@@ -127,18 +132,18 @@ SELECT
   \($id | sql_uuid),
   cu.user_id,
   \($product_type | sql_enum("product_type")),
-  \($name | sql_str),
-  \($maker | sql_str),
+  \($name | sql_str_nn),
+  \($maker | sql_str_nn),
   \($date | sql_date),
   \($score | sql_int),
-  \($style | sql_str),
+  \($style | sql_str_nn),
   \($heat_user | sql_int),
   \($heat_vendor | sql_int),
   \($refreshing | sql_int),
   \($sweet | sql_int),
-  \($notes_user | sql_str),
-  \($notes_vendor | sql_str),
-  \($product_url | sql_str),
+  \($notes_user | sql_str_nn),
+  \($notes_vendor | sql_str_nn),
+  \($product_url | sql_str_nn),
   \($image_url | sql_str),
   \($image_key | sql_str),
   \($ing_image_url | sql_str),
