@@ -2,8 +2,8 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, head};
 use axum::{Json, Router};
+use base64::Engine;
 use serde::{Deserialize, Serialize};
-use shared::auth;
 use shared::error::AppError;
 use shared::types::{RecipeSource, UnitType};
 use shared::AppState;
@@ -78,7 +78,7 @@ async fn mcp_post(
         "initialize" => handle_initialize(msg),
         "tools/list" => handle_tools_list(msg),
         "tools/call" => {
-            let user = extract_user_from_token(&headers).await?;
+            let user = extract_user_from_token(&headers)?;
             tracing::info!(user_sub = %user.sub, "MCP tools/call");
             handle_tools_call(msg, &state, &user).await
         }
@@ -86,14 +86,41 @@ async fn mcp_post(
     }
 }
 
-/// Extract user identity from the ALB-validated JWT.
-/// ALB already validated the token; we just need the claims.
-async fn extract_user_from_token(headers: &HeaderMap) -> Result<shared::types::UserContext, AppError> {
+/// Decode user identity from the ALB-validated JWT.
+/// ALB already validated the token — just extract claims, no crypto.
+fn extract_user_from_token(headers: &HeaderMap) -> Result<shared::types::UserContext, AppError> {
     let auth_header = headers
         .get("authorization")
-        .and_then(|v| v.to_str().ok());
-    let token = auth::extract_bearer(auth_header)?;
-    auth::verify_token(token).await
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| AppError::Unauthorized("missing authorization header".into()))?;
+    let token = auth_header
+        .strip_prefix("Bearer ")
+        .or_else(|| auth_header.strip_prefix("bearer "))
+        .ok_or_else(|| AppError::Unauthorized("missing bearer token".into()))?;
+
+    // JWT is header.payload.signature — decode the payload (index 1)
+    let payload_b64 = token
+        .split('.')
+        .nth(1)
+        .ok_or_else(|| AppError::Unauthorized("malformed token".into()))?;
+    let payload_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload_b64)
+        .map_err(|_| AppError::Unauthorized("invalid token encoding".into()))?;
+
+    #[derive(Deserialize)]
+    struct Claims {
+        sub: String,
+        email: Option<String>,
+    }
+
+    let claims: Claims = serde_json::from_slice(&payload_bytes)
+        .map_err(|_| AppError::Unauthorized("invalid token claims".into()))?;
+
+    Ok(shared::types::UserContext {
+        sub: claims.sub,
+        email: claims.email,
+        user_id: None,
+    })
 }
 
 fn handle_initialize(msg: McpMessage) -> Result<Json<McpResponse>, AppError> {
