@@ -4,29 +4,8 @@
 # Writes (POST/DELETE) require jwt-validation.
 # MCP has selective auth (initialize is unauthenticated) so the Lambda handles it.
 
-# --- CORS preflight — OPTIONS must bypass jwt-validation ---
-
-resource "aws_lb_listener_rule" "api_cors" {
-  listener_arn = nonsensitive(data.aws_ssm_parameter.alb_listener_arn.value)
-  priority     = 209
-
-  condition {
-    host_header {
-      values = [local.api_hostname]
-    }
-  }
-
-  condition {
-    http_request_method {
-      values = ["OPTIONS"]
-    }
-  }
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.tastings_api.arn
-  }
-}
+# CORS preflight (OPTIONS) is handled platform-wide by platform-network.
+# App Lambdas still need tower-http CorsLayer for CORS headers on actual responses.
 
 # --- Tastings API ---
 
