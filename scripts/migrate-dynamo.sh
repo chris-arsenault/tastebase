@@ -13,7 +13,7 @@ OUTPUT_FILE="${OUTPUT_DIR}/001_migrate_dynamo.sql"
 mkdir -p "${OUTPUT_DIR}"
 
 echo "Scanning DynamoDB table: ${DYNAMO_TABLE}..."
-RAW_JSON=$(aws dynamodb scan --table-name "${DYNAMO_TABLE}" --output json)
+RAW_JSON=$(aws dynamodb scan --table-name "${DYNAMO_TABLE}" --region us-east-1 --output json)
 
 ITEM_COUNT=$(echo "${RAW_JSON}" | jq '.Items | length')
 echo "Found ${ITEM_COUNT} items."
