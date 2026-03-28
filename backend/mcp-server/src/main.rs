@@ -37,11 +37,10 @@ async fn oauth_authorization_server_metadata() -> Json<serde_json::Value> {
 
 async fn oauth_protected_resource() -> Json<serde_json::Value> {
     let api_url = std::env::var("API_BASE_URL").unwrap_or_default();
-    let app_url = std::env::var("APP_BASE_URL").unwrap_or_default();
 
     Json(serde_json::json!({
         "resource": api_url,
-        "authorization_servers": [app_url],
+        "authorization_servers": [api_url],
         "bearer_methods_supported": ["header"],
         "scopes_supported": ["recipe.write", "recipe.read"]
     }))
