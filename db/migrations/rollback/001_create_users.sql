@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS cognito_users;
+DROP TABLE IF EXISTS users;

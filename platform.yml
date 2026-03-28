@@ -1,0 +1,3 @@
+project: tastebase
+prefix: tastebase
+migrations: db/migrations
