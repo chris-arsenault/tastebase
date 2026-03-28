@@ -30,7 +30,7 @@ npm run dev
 
 # Backend
 cd backend
-cargo lambda build --release --arm64
+cargo lambda build --release
 ```
 
 ## Deploy

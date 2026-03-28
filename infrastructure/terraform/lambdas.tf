@@ -100,7 +100,7 @@ resource "aws_lambda_function" "tastings_api" {
   role          = aws_iam_role.lambda.arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
-  architectures = ["arm64"]
+  architectures = ["x86_64"]
   timeout       = 30
   memory_size   = 256
 
@@ -126,7 +126,7 @@ resource "aws_lambda_function" "recipes_api" {
   role          = aws_iam_role.lambda.arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
-  architectures = ["arm64"]
+  architectures = ["x86_64"]
   timeout       = 30
   memory_size   = 256
 
@@ -150,7 +150,7 @@ resource "aws_lambda_function" "mcp_server" {
   role          = aws_iam_role.lambda.arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
-  architectures = ["arm64"]
+  architectures = ["x86_64"]
   timeout       = 30
   memory_size   = 256
 
@@ -176,7 +176,7 @@ resource "aws_lambda_function" "processing" {
   role          = aws_iam_role.lambda.arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
-  architectures = ["arm64"]
+  architectures = ["x86_64"]
   timeout       = 300
   memory_size   = 512
 

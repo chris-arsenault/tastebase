@@ -10,7 +10,7 @@ STATE_REGION="${STATE_REGION:-us-east-1}"
 # Build Rust Lambdas
 echo "Building Lambdas..."
 cd "${ROOT_DIR}/backend"
-cargo lambda build --release --arm64
+cargo lambda build --release
 cd "${ROOT_DIR}"
 
 # Build frontend

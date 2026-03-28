@@ -41,7 +41,7 @@ Section toggle in the header switches between the two. Product type toggle (sauc
 
 ```bash
 # Build all Lambdas
-cd backend && cargo lambda build --release --arm64
+cd backend && cargo lambda build --release
 
 # Run migrations
 db-migrate
