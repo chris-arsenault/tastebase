@@ -14,7 +14,12 @@ const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
 // -- Well-known metadata endpoints (unauthenticated) --
 
 async fn oauth_authorization_server_metadata() -> Json<serde_json::Value> {
-    let cognito_domain = std::env::var("COGNITO_DOMAIN").unwrap_or_default();
+    let raw_domain = std::env::var("COGNITO_DOMAIN").unwrap_or_default();
+    let cognito_domain = if raw_domain.starts_with("https://") || raw_domain.starts_with("http://") {
+        raw_domain
+    } else {
+        format!("https://{raw_domain}")
+    };
     let issuer = std::env::var("COGNITO_ISSUER").unwrap_or_default();
 
     Json(serde_json::json!({
