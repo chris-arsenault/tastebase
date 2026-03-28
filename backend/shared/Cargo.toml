@@ -21,3 +21,4 @@ tokio = { workspace = true }
 base64 = "0.22"
 rust_decimal = { version = "1", features = ["serde"] }
 ammonia = "4"
+tower-http = { version = "0.6", features = ["cors"] }

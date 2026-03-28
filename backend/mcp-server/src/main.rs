@@ -315,6 +315,7 @@ fn router(state: AppState) -> Router {
         .route("/.well-known/oauth-authorization-server", get(oauth_authorization_server_metadata))
         .route("/.well-known/oauth-protected-resource", get(oauth_protected_resource))
         .route("/mcp", head(mcp_head).post(mcp_post))
+        .layer(shared::cors::layer())
         .with_state(state)
 }
 

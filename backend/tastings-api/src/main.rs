@@ -483,6 +483,7 @@ fn router(state: AppState) -> Router {
         .route("/tastings/{id}", delete(delete_tasting))
         .route("/tastings/{id}/media", post(update_media))
         .route("/tastings/{id}/rerun", post(rerun_processing))
+        .layer(shared::cors::layer())
         .with_state(state)
 }
 

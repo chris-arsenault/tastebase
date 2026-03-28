@@ -201,6 +201,7 @@ fn router(state: AppState) -> Router {
     Router::new()
         .route("/recipes", get(list_recipes).post(create_recipe))
         .route("/recipes/{id}", get(get_recipe).delete(delete_recipe))
+        .layer(shared::cors::layer())
         .with_state(state)
 }
 
