@@ -2,8 +2,8 @@ use aws_sdk_transcribe::types::MediaFormat;
 use regex::Regex;
 use uuid::Uuid;
 
-use crate::llm::{build_text_prompt, invoke_claude, parse_json_from_text};
 use crate::Ctx;
+use crate::llm::{build_text_prompt, invoke_claude, parse_json_from_text};
 
 /// Map a MIME type string to a Transcribe MediaFormat.
 fn map_media_format(mime_type: &str) -> MediaFormat {
@@ -382,12 +382,11 @@ pub async fn apply_voice_notes(
             let should_flag = if force {
                 true
             } else {
-                let row: Option<(String,)> = sqlx::query_as(
-                    "SELECT tasting_notes_user FROM tastings WHERE id = $1",
-                )
-                .bind(id)
-                .fetch_optional(db)
-                .await?;
+                let row: Option<(String,)> =
+                    sqlx::query_as("SELECT tasting_notes_user FROM tastings WHERE id = $1")
+                        .bind(id)
+                        .fetch_optional(db)
+                        .await?;
                 match row {
                     Some((notes,)) => notes.trim().is_empty(),
                     None => true,
@@ -426,13 +425,11 @@ pub async fn apply_transcript(
     force: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if force {
-        sqlx::query(
-            "UPDATE tastings SET voice_transcript = $2, updated_at = now() WHERE id = $1",
-        )
-        .bind(id)
-        .bind(transcript)
-        .execute(db)
-        .await?;
+        sqlx::query("UPDATE tastings SET voice_transcript = $2, updated_at = now() WHERE id = $1")
+            .bind(id)
+            .bind(transcript)
+            .execute(db)
+            .await?;
     } else {
         sqlx::query(
             "UPDATE tastings SET voice_transcript = $2, updated_at = now() WHERE id = $1 AND (voice_transcript IS NULL OR voice_transcript = '')",
@@ -443,4 +440,42 @@ pub async fn apply_transcript(
         .await?;
     }
     Ok(())
+}
+
+/// Format a voice transcript into a recipe review. Reuses the same LLM
+/// infrastructure as tasting notes but with a review-specific prompt.
+pub async fn format_recipe_review(
+    ctx: &Ctx,
+    transcript: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let instructions = "You are an editor cleaning up a spoken recipe review. Rules:\n\
+         1. Write in first person (I, my, me). Never third person.\n\
+         2. Fix all grammar, spelling, and punctuation. Remove double commas, trailing commas, run-on sentences.\n\
+         3. Fix misspoken words — if the speaker clearly meant a specific ingredient or cooking term, use the correct spelling (e.g. 'gojutonng' → 'gochujang').\n\
+         4. Remove ALL filler words (um, uh, like, you know, sort of, kind of, basically).\n\
+         5. Remove the numeric score from the text — it will be extracted separately.\n\
+         6. Organize into short paragraphs. Use **bold** for key takeaways.\n\
+         7. Keep the speaker's personality and opinions. Don't add information they didn't say.\n\
+         8. Return ONLY the cleaned review text. No preamble, no labels, no 'Here is the review'.";
+
+    let payload = build_text_prompt(instructions, transcript);
+    match invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await {
+        Ok(text) => {
+            let trimmed = text.trim().to_string();
+            if trimmed.is_empty() {
+                Ok(strip_filler(transcript))
+            } else {
+                Ok(trimmed)
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "LLM review formatting failed, using raw transcript");
+            Ok(strip_filler(transcript))
+        }
+    }
+}
+
+fn strip_filler(text: &str) -> String {
+    let re = Regex::new(r"(?i)\b(um|uh|like,?\s)").unwrap();
+    re.replace_all(text, "").trim().to_string()
 }

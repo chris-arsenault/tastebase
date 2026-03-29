@@ -1,4 +1,6 @@
+use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
+use std::time::Duration;
 
 use crate::error::AppError;
 
@@ -51,6 +53,32 @@ pub async fn download_base64(
     Ok((b64, content_type))
 }
 
+/// Generate a presigned S3 PUT URL for direct client upload.
+/// Returns (presigned_url, key, public_url).
+pub async fn presign_upload(
+    s3: &aws_sdk_s3::Client,
+    bucket: &str,
+    key: &str,
+    content_type: &str,
+) -> Result<(String, String), AppError> {
+    let presign_config = PresigningConfig::builder()
+        .expires_in(Duration::from_secs(300))
+        .build()
+        .map_err(|e| AppError::Internal(format!("presign config failed: {e}")))?;
+
+    let presigned = s3
+        .put_object()
+        .bucket(bucket)
+        .key(key)
+        .content_type(content_type)
+        .presigned(presign_config)
+        .await
+        .map_err(|e| AppError::Internal(format!("presign failed: {e}")))?;
+
+    let public_url = format!("https://{bucket}.s3.amazonaws.com/{key}");
+    Ok((presigned.uri().to_string(), public_url))
+}
+
 /// Decode a base64 data URI or raw base64 string into bytes + content type.
 pub fn parse_base64_payload(data: &str, fallback_mime: Option<&str>) -> Option<(Vec<u8>, String)> {
     use base64::Engine;
@@ -64,7 +92,12 @@ pub fn parse_base64_payload(data: &str, fallback_mime: Option<&str>) -> Option<(
         let (mime, encoded) = rest.split_once(";base64,")?;
         (encoded, mime.to_string())
     } else {
-        (data, fallback_mime.unwrap_or("application/octet-stream").to_string())
+        (
+            data,
+            fallback_mime
+                .unwrap_or("application/octet-stream")
+                .to_string(),
+        )
     };
 
     let bytes = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;

@@ -139,7 +139,9 @@ resource "aws_lambda_function" "recipes_api" {
   }
 
   environment {
-    variables = local.common_env
+    variables = merge(local.common_env, {
+      PROCESSING_FUNCTION_NAME = aws_lambda_function.processing.function_name
+    })
   }
 }
 
@@ -190,7 +192,7 @@ resource "aws_lambda_function" "processing" {
 
   environment {
     variables = merge(local.common_env, {
-      BEDROCK_MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0"
+      BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     })
   }
 }

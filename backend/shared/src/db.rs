@@ -1,5 +1,5 @@
-use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
 use crate::types::{CognitoUser, User};
@@ -24,10 +24,14 @@ pub async fn connect() -> PgPool {
 
 /// Resolve a Cognito sub to an internal user ID via JIT provisioning.
 /// Creates the user and cognito_users mapping if they don't exist.
-pub async fn resolve_user(pool: &PgPool, cognito_sub: &str, email: Option<&str>) -> Result<Uuid, sqlx::Error> {
+pub async fn resolve_user(
+    pool: &PgPool,
+    cognito_sub: &str,
+    email: Option<&str>,
+) -> Result<Uuid, sqlx::Error> {
     // Check existing mapping
     let existing: Option<CognitoUser> = sqlx::query_as(
-        "SELECT cognito_sub, user_id, email, linked_at FROM cognito_users WHERE cognito_sub = $1"
+        "SELECT cognito_sub, user_id, email, linked_at FROM cognito_users WHERE cognito_sub = $1",
     )
     .bind(cognito_sub)
     .fetch_optional(pool)
@@ -48,14 +52,12 @@ pub async fn resolve_user(pool: &PgPool, cognito_sub: &str, email: Option<&str>)
     .fetch_one(&mut *tx)
     .await?;
 
-    sqlx::query(
-        "INSERT INTO cognito_users (cognito_sub, user_id, email) VALUES ($1, $2, $3)"
-    )
-    .bind(cognito_sub)
-    .bind(user.id)
-    .bind(email)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("INSERT INTO cognito_users (cognito_sub, user_id, email) VALUES ($1, $2, $3)")
+        .bind(cognito_sub)
+        .bind(user.id)
+        .bind(email)
+        .execute(&mut *tx)
+        .await?;
 
     tx.commit().await?;
     Ok(user.id)

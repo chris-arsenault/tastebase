@@ -20,7 +20,7 @@ tower = "0.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-time = { version = "0.3", features = ["serde"] }
+time = { version = "0.3", features = ["serde", "serde-well-known", "formatting", "macros"] }
 aws-config = "1"
 aws-sdk-s3 = "1"
 aws-sdk-lambda = "1"

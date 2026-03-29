@@ -223,6 +223,7 @@ const App = () => {
   const recipesHook = useRecipes();
   const { section, selectedRecipe, setSection, handleSelectRecipe, handleBackToRecipes } = useHashRouter(recipesHook.recipes);
   const menu = useMemo(() => ({ open: menuOpen, setOpen: setMenuOpen }), [menuOpen, setMenuOpen]);
+  const handleRecipeDeleted = useCallback(() => { recipesHook.reload(); handleBackToRecipes(); }, [recipesHook, handleBackToRecipes]);
 
   return (
     <div className={`app ${themeClass[filters.productType] ?? "theme-sauce"}`}>
@@ -261,7 +262,9 @@ const App = () => {
         <RecipeDetail
           key={selectedRecipe.id}
           recipeId={selectedRecipe.id}
+          token={auth.token}
           onClose={handleBackToRecipes}
+          onDeleted={handleRecipeDeleted}
         />
       )}
 

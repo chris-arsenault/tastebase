@@ -10,6 +10,7 @@ pub struct User {
     pub id: Uuid,
     pub email: String,
     pub display_name: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
 
@@ -19,6 +20,7 @@ pub struct CognitoUser {
     pub cognito_sub: String,
     pub user_id: Uuid,
     pub email: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub linked_at: OffsetDateTime,
 }
 
@@ -99,7 +101,9 @@ pub struct Tasting {
     pub processing_error: Option<String>,
     pub needs_attention: bool,
     pub attention_reason: Option<String>,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
 }
 
@@ -130,7 +134,9 @@ pub struct TastingPublic {
     pub processing_error: Option<String>,
     pub needs_attention: bool,
     pub attention_reason: Option<String>,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
 }
 
@@ -213,16 +219,36 @@ pub enum UnitType {
 #[serde(rename_all = "camelCase")]
 pub struct Recipe {
     pub id: Uuid,
-    pub user_id: Uuid,
+    pub user_id: Option<Uuid>,
     pub title: String,
     pub description: Option<String>,
     pub base_servings: i32,
     pub notes: Option<String>,
     pub source: RecipeSource,
     pub source_meta: Option<sqlx::types::Json<serde_json::Value>>,
-    pub cover_image_url: Option<String>,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeWithThumb {
+    pub id: Uuid,
+    pub user_id: Option<Uuid>,
+    pub title: String,
+    pub description: Option<String>,
+    pub base_servings: i32,
+    pub notes: Option<String>,
+    pub source: RecipeSource,
+    pub source_meta: Option<sqlx::types::Json<serde_json::Value>>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub updated_at: OffsetDateTime,
+    pub thumbnail_url: Option<String>,
+    pub latest_score: Option<i16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -232,6 +258,7 @@ pub struct RecipeIngredient {
     pub recipe_id: Uuid,
     pub widget_id: String,
     pub name: String,
+    pub short_name: String,
     pub amount: rust_decimal::Decimal,
     pub unit: UnitType,
     pub sort_order: i32,
@@ -249,7 +276,37 @@ pub struct RecipeStep {
     pub sort_order: i32,
 }
 
-/// Full recipe with nested ingredients and steps for API responses.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeReview {
+    pub id: Uuid,
+    pub recipe_id: Uuid,
+    pub voice_key: Option<String>,
+    pub voice_transcript: Option<String>,
+    pub notes: String,
+    pub score: Option<i16>,
+    pub status: ProcessingStatus,
+    pub processing_error: Option<String>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeImage {
+    pub id: Uuid,
+    pub recipe_id: Uuid,
+    pub image_url: String,
+    pub image_key: String,
+    pub caption: String,
+    pub sort_order: i32,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+}
+
+/// Full recipe with nested ingredients, steps, reviews, and images.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeFull {
@@ -257,6 +314,8 @@ pub struct RecipeFull {
     pub recipe: Recipe,
     pub ingredients: Vec<RecipeIngredient>,
     pub steps: Vec<RecipeStep>,
+    pub reviews: Vec<RecipeReview>,
+    pub images: Vec<RecipeImage>,
 }
 
 // -- Auth --

@@ -94,7 +94,8 @@ export type Recipe = {
   notes: string | null;
   source: RecipeSource;
   sourceMeta: Record<string, unknown> | null;
-  coverImageUrl: string | null;
+  thumbnailUrl?: string | null;
+  latestScore?: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -104,6 +105,7 @@ export type RecipeIngredient = {
   recipeId: string;
   widgetId: string;
   name: string;
+  shortName: string;
   amount: number;
   unit: string;
   sortOrder: number;
@@ -119,7 +121,32 @@ export type RecipeStep = {
   sortOrder: number;
 };
 
+export type RecipeReview = {
+  id: string;
+  recipeId: string;
+  voiceKey: string | null;
+  voiceTranscript: string | null;
+  notes: string;
+  score: number | null;
+  status: string;
+  processingError: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RecipeImage = {
+  id: string;
+  recipeId: string;
+  imageUrl: string;
+  imageKey: string;
+  caption: string;
+  sortOrder: number;
+  createdAt: string;
+};
+
 export type RecipeFull = Recipe & {
   ingredients: RecipeIngredient[];
   steps: RecipeStep[];
+  reviews: RecipeReview[];
+  images: RecipeImage[];
 };

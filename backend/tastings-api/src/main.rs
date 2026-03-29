@@ -2,10 +2,9 @@ use axum::extract::{Path, Query, State};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
-use shared::auth::RequireAuth;
+use shared::AppState;
 use shared::error::AppError;
 use shared::types::{Tasting, TastingPublic};
-use shared::AppState;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
@@ -108,12 +107,10 @@ struct CreateTastingInput {
 
 async fn create_tasting(
     State(state): State<AppState>,
-    RequireAuth(user): RequireAuth,
     Json(input): Json<CreateTastingInput>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    tracing::info!(user_sub = %user.sub, "creating tasting");
+    tracing::info!("creating tasting");
 
-    // Validate
     shared::validate::validate_tasting_input(
         input.name.as_deref(),
         input.maker.as_deref(),
@@ -129,20 +126,25 @@ async fn create_tasting(
     )?;
     shared::validate::validate_base64_fields(&[
         ("imageBase64", input.image_base64.as_deref()),
-        ("ingredientsImageBase64", input.ingredients_image_base64.as_deref()),
-        ("nutritionImageBase64", input.nutrition_image_base64.as_deref()),
+        (
+            "ingredientsImageBase64",
+            input.ingredients_image_base64.as_deref(),
+        ),
+        (
+            "nutritionImageBase64",
+            input.nutrition_image_base64.as_deref(),
+        ),
         ("voiceBase64", input.voice_base64.as_deref()),
     ])?;
 
-    // Sanitize
     let name = shared::sanitize::clean_or_empty(input.name.as_deref());
     let maker = shared::sanitize::clean_or_empty(input.maker.as_deref());
     let style = shared::sanitize::clean_or_empty(input.style.as_deref());
     let tasting_notes_user = shared::sanitize::clean_or_empty(input.tasting_notes_user.as_deref());
-    let tasting_notes_vendor = shared::sanitize::clean_or_empty(input.tasting_notes_vendor.as_deref());
+    let tasting_notes_vendor =
+        shared::sanitize::clean_or_empty(input.tasting_notes_vendor.as_deref());
     let product_url = shared::sanitize::clean_or_empty(input.product_url.as_deref());
 
-    let user_id = shared::db::resolve_user(&state.db, &user.sub, user.email.as_deref()).await?;
     let id = Uuid::new_v4();
     let now = time::OffsetDateTime::now_utc();
     let date_str = input.date.as_deref().unwrap_or("");
@@ -152,28 +154,54 @@ async fn create_tasting(
     )
     .unwrap_or_else(|_| now.date());
 
-    // Upload media to S3
-    let image = upload_if_present(&state, &input.image_base64, &input.image_mime_type, &format!("images/{id}"), "jpg").await?;
-    let ingredients = upload_if_present(&state, &input.ingredients_image_base64, &input.ingredients_image_mime_type, &format!("images/{id}-ingredients"), "jpg").await?;
-    let nutrition = upload_if_present(&state, &input.nutrition_image_base64, &input.nutrition_image_mime_type, &format!("images/{id}-nutrition"), "jpg").await?;
-    let voice = upload_if_present(&state, &input.voice_base64, &input.voice_mime_type, &format!("voice/{id}"), "webm").await?;
+    let image = upload_if_present(
+        &state,
+        &input.image_base64,
+        &input.image_mime_type,
+        &format!("images/{id}"),
+        "jpg",
+    )
+    .await?;
+    let ingredients = upload_if_present(
+        &state,
+        &input.ingredients_image_base64,
+        &input.ingredients_image_mime_type,
+        &format!("images/{id}-ingredients"),
+        "jpg",
+    )
+    .await?;
+    let nutrition = upload_if_present(
+        &state,
+        &input.nutrition_image_base64,
+        &input.nutrition_image_mime_type,
+        &format!("images/{id}-nutrition"),
+        "jpg",
+    )
+    .await?;
+    let voice = upload_if_present(
+        &state,
+        &input.voice_base64,
+        &input.voice_mime_type,
+        &format!("voice/{id}"),
+        "webm",
+    )
+    .await?;
 
     if voice.is_some() {
         tracing::info!(tasting_id = %id, "voice media uploaded");
     }
 
     sqlx::query(
-        "INSERT INTO tastings (id, user_id, name, maker, date, score, style,
+        "INSERT INTO tastings (id, name, maker, date, score, style,
          heat_user, heat_vendor, refreshing, sweet,
          tasting_notes_user, tasting_notes_vendor, product_url,
          image_url, image_key, ingredients_image_url, ingredients_image_key,
          nutrition_image_url, nutrition_image_key, voice_key,
          status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                 $15, $16, $17, $18, $19, $20, $21, 'pending', $22, $22)"
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                 $14, $15, $16, $17, $18, $19, $20, 'pending', $21, $21)",
     )
     .bind(id)
-    .bind(user_id)
     .bind(&name)
     .bind(&maker)
     .bind(date)
@@ -197,11 +225,12 @@ async fn create_tasting(
     .execute(&state.db)
     .await?;
 
-    tracing::info!(tasting_id = %id, user_id = %user_id, "tasting created");
+    tracing::info!(tasting_id = %id, "tasting created");
 
-    // Queue async processing
     invoke_processing(
-        &state.db, id, false,
+        &state.db,
+        id,
+        false,
         image.as_ref().map(|m| m.key.as_str()),
         ingredients.as_ref().map(|m| m.key.as_str()),
         nutrition.as_ref().map(|m| m.key.as_str()),
@@ -210,27 +239,25 @@ async fn create_tasting(
         resolve_mime(&ingredients, input.ingredients_image_mime_type.as_deref()),
         resolve_mime(&nutrition, input.nutrition_image_mime_type.as_deref()),
         resolve_mime(&voice, input.voice_mime_type.as_deref()),
-    ).await;
+    )
+    .await;
 
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
 async fn delete_tasting(
     State(state): State<AppState>,
-    RequireAuth(user): RequireAuth,
     Path(id): Path<Uuid>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    let user_id = shared::db::resolve_user(&state.db, &user.sub, user.email.as_deref()).await?;
-    let result = sqlx::query("DELETE FROM tastings WHERE id = $1 AND user_id = $2")
+    let result = sqlx::query("DELETE FROM tastings WHERE id = $1")
         .bind(id)
-        .bind(user_id)
         .execute(&state.db)
         .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound);
     }
-    tracing::info!(tasting_id = %id, user_id = %user_id, "tasting deleted");
+    tracing::info!(tasting_id = %id, "tasting deleted");
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
@@ -247,14 +274,11 @@ struct UpdateMediaInput {
 
 async fn update_media(
     State(state): State<AppState>,
-    RequireAuth(user): RequireAuth,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateMediaInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let user_id = shared::db::resolve_user(&state.db, &user.sub, user.email.as_deref()).await?;
-    let tasting: Option<Tasting> = sqlx::query_as("SELECT * FROM tastings WHERE id = $1 AND user_id = $2")
+    let tasting: Option<Tasting> = sqlx::query_as("SELECT * FROM tastings WHERE id = $1")
         .bind(id)
-        .bind(user_id)
         .fetch_optional(&state.db)
         .await?;
 
@@ -262,13 +286,40 @@ async fn update_media(
 
     shared::validate::validate_base64_fields(&[
         ("imageBase64", input.image_base64.as_deref()),
-        ("ingredientsImageBase64", input.ingredients_image_base64.as_deref()),
-        ("nutritionImageBase64", input.nutrition_image_base64.as_deref()),
+        (
+            "ingredientsImageBase64",
+            input.ingredients_image_base64.as_deref(),
+        ),
+        (
+            "nutritionImageBase64",
+            input.nutrition_image_base64.as_deref(),
+        ),
     ])?;
 
-    let image = upload_if_present(&state, &input.image_base64, &input.image_mime_type, &format!("images/{}", tasting.id), "jpg").await?;
-    let ingredients = upload_if_present(&state, &input.ingredients_image_base64, &input.ingredients_image_mime_type, &format!("images/{}-ingredients", tasting.id), "jpg").await?;
-    let nutrition = upload_if_present(&state, &input.nutrition_image_base64, &input.nutrition_image_mime_type, &format!("images/{}-nutrition", tasting.id), "jpg").await?;
+    let image = upload_if_present(
+        &state,
+        &input.image_base64,
+        &input.image_mime_type,
+        &format!("images/{}", tasting.id),
+        "jpg",
+    )
+    .await?;
+    let ingredients = upload_if_present(
+        &state,
+        &input.ingredients_image_base64,
+        &input.ingredients_image_mime_type,
+        &format!("images/{}-ingredients", tasting.id),
+        "jpg",
+    )
+    .await?;
+    let nutrition = upload_if_present(
+        &state,
+        &input.nutrition_image_base64,
+        &input.nutrition_image_mime_type,
+        &format!("images/{}-nutrition", tasting.id),
+        "jpg",
+    )
+    .await?;
 
     if image.is_none() && ingredients.is_none() && nutrition.is_none() {
         return Err(AppError::BadRequest("no media provided".into()));
@@ -284,7 +335,7 @@ async fn update_media(
             nutrition_image_url = COALESCE($6, nutrition_image_url),
             nutrition_image_key = COALESCE($7, nutrition_image_key),
             updated_at = $8
-         WHERE id = $1"
+         WHERE id = $1",
     )
     .bind(id)
     .bind(image.as_ref().map(|m| m.url.as_str()))
@@ -309,13 +360,10 @@ async fn update_media(
 
 async fn rerun_processing(
     State(state): State<AppState>,
-    RequireAuth(user): RequireAuth,
     Path(id): Path<Uuid>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    let user_id = shared::db::resolve_user(&state.db, &user.sub, user.email.as_deref()).await?;
-    let tasting: Option<Tasting> = sqlx::query_as("SELECT * FROM tastings WHERE id = $1 AND user_id = $2")
+    let tasting: Option<Tasting> = sqlx::query_as("SELECT * FROM tastings WHERE id = $1")
         .bind(id)
-        .bind(user_id)
         .fetch_optional(&state.db)
         .await?;
 
@@ -337,7 +385,9 @@ async fn rerun_processing(
     tracing::info!(tasting_id = %id, "rerun processing requested");
 
     invoke_processing(
-        &state.db, id, true,
+        &state.db,
+        id,
+        true,
         tasting.image_key.as_deref(),
         tasting.ingredients_image_key.as_deref(),
         tasting.nutrition_image_key.as_deref(),
@@ -346,7 +396,8 @@ async fn rerun_processing(
         infer_mime(tasting.ingredients_image_key.as_deref()),
         infer_mime(tasting.nutrition_image_key.as_deref()),
         infer_mime(tasting.voice_key.as_deref()),
-    ).await;
+    )
+    .await;
 
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
@@ -380,12 +431,18 @@ async fn upload_if_present(
         .unwrap_or_default()
         .as_millis();
     let key = format!("{prefix}-{ts}.{ext}");
-    let url = shared::media::upload(&state.s3, &state.media_bucket, &key, bytes, &content_type).await?;
-    Ok(Some(MediaResult { url, key, content_type }))
+    let url =
+        shared::media::upload(&state.s3, &state.media_bucket, &key, bytes, &content_type).await?;
+    Ok(Some(MediaResult {
+        url,
+        key,
+        content_type,
+    }))
 }
 
 fn resolve_mime(media: &Option<MediaResult>, fallback: Option<&str>) -> Option<String> {
-    media.as_ref()
+    media
+        .as_ref()
         .map(|m| m.content_type.clone())
         .or_else(|| fallback.map(|s| s.split(';').next().unwrap_or(s).trim().to_string()))
 }
@@ -465,7 +522,6 @@ async fn invoke_processing(
         }
         Err(e) => {
             tracing::error!(record_id = %record_id, error = %e, "failed to invoke processing Lambda");
-            // Mark record as error so it doesn't stay pending forever
             let _ = sqlx::query(
                 "UPDATE tastings SET status = 'error', processing_error = $2, updated_at = now() WHERE id = $1"
             )

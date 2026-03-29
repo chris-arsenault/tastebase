@@ -12,6 +12,20 @@ resource "aws_s3_bucket_public_access_block" "media" {
   restrict_public_buckets = false
 }
 
+resource "aws_s3_bucket_cors_configuration" "media" {
+  bucket = aws_s3_bucket.media.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["PUT", "GET"]
+    allowed_origins = [
+      "https://${local.frontend_hostname}",
+      "http://localhost:5173"
+    ]
+    max_age_seconds = 3600
+  }
+}
+
 resource "aws_s3_bucket_policy" "media" {
   bucket     = aws_s3_bucket.media.id
   depends_on = [aws_s3_bucket_public_access_block.media]

@@ -23,7 +23,12 @@ fn check_range(field: &str, value: i16, min: i16, max: i16) -> Result<(), AppErr
     Ok(())
 }
 
-fn check_optional_range(field: &str, value: Option<i16>, min: i16, max: i16) -> Result<(), AppError> {
+fn check_optional_range(
+    field: &str,
+    value: Option<i16>,
+    min: i16,
+    max: i16,
+) -> Result<(), AppError> {
     if let Some(v) = value {
         check_range(field, v, min, max)?;
     }
@@ -56,12 +61,24 @@ pub fn validate_tasting_input(
     tasting_notes_vendor: Option<&str>,
     product_url: Option<&str>,
 ) -> Result<(), AppError> {
-    if let Some(v) = name { check_len("name", v, MAX_NAME_LEN)?; }
-    if let Some(v) = maker { check_len("maker", v, MAX_NAME_LEN)?; }
-    if let Some(v) = style { check_len("style", v, MAX_NAME_LEN)?; }
-    if let Some(v) = tasting_notes_user { check_len("tastingNotesUser", v, MAX_NOTES_LEN)?; }
-    if let Some(v) = tasting_notes_vendor { check_len("tastingNotesVendor", v, MAX_NOTES_LEN)?; }
-    if let Some(v) = product_url { check_len("productUrl", v, MAX_URL_LEN)?; }
+    if let Some(v) = name {
+        check_len("name", v, MAX_NAME_LEN)?;
+    }
+    if let Some(v) = maker {
+        check_len("maker", v, MAX_NAME_LEN)?;
+    }
+    if let Some(v) = style {
+        check_len("style", v, MAX_NAME_LEN)?;
+    }
+    if let Some(v) = tasting_notes_user {
+        check_len("tastingNotesUser", v, MAX_NOTES_LEN)?;
+    }
+    if let Some(v) = tasting_notes_vendor {
+        check_len("tastingNotesVendor", v, MAX_NOTES_LEN)?;
+    }
+    if let Some(v) = product_url {
+        check_len("productUrl", v, MAX_URL_LEN)?;
+    }
     check_optional_range("score", score, 0, 10)?;
     check_optional_range("heatUser", heat_user, 0, 10)?;
     check_optional_range("heatVendor", heat_vendor, 0, 10)?;
@@ -73,9 +90,10 @@ pub fn validate_tasting_input(
 pub fn validate_base64_fields(fields: &[(&str, Option<&str>)]) -> Result<(), AppError> {
     for (name, value) in fields {
         if let Some(v) = value
-            && !v.is_empty() {
-                check_base64(name, v)?;
-            }
+            && !v.is_empty()
+        {
+            check_base64(name, v)?;
+        }
     }
     Ok(())
 }
@@ -90,10 +108,16 @@ pub fn validate_recipe_input(
     if title.trim().is_empty() {
         return Err(AppError::BadRequest("title is required".into()));
     }
-    if let Some(v) = description { check_len("description", v, MAX_NOTES_LEN)?; }
-    if let Some(v) = notes { check_len("notes", v, MAX_NOTES_LEN)?; }
+    if let Some(v) = description {
+        check_len("description", v, MAX_NOTES_LEN)?;
+    }
+    if let Some(v) = notes {
+        check_len("notes", v, MAX_NOTES_LEN)?;
+    }
     if base_servings < 1 {
-        return Err(AppError::BadRequest("baseServings must be at least 1".into()));
+        return Err(AppError::BadRequest(
+            "baseServings must be at least 1".into(),
+        ));
     }
     Ok(())
 }

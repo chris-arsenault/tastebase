@@ -1,16 +1,16 @@
 import type { Recipe } from "../types";
 
 const sourceLabels: Record<string, string> = {
-  claude: "AI Generated",
+  claude: "Recipe by Claude",
   manual: "Manual",
   import: "Imported"
 };
 
 const formatDate = (value: string) => {
   if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString();
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 };
 
 type RecipeListProps = {
@@ -48,22 +48,22 @@ export function RecipeList({ recipes, loading, error, onSelect }: Readonly<Recip
           onClick={() => onSelect(recipe)}
         >
           <div className="recipe-card-image">
-            {recipe.coverImageUrl ? (
-              <img src={recipe.coverImageUrl} alt={recipe.title} loading="lazy" />
+            {recipe.thumbnailUrl ? (
+              <img src={recipe.thumbnailUrl} alt={recipe.title} loading="lazy" />
             ) : (
               <div className="recipe-card-image-empty">{"\uD83D\uDCD6"}</div>
             )}
-            <span className="recipe-source-badge">
-              {sourceLabels[recipe.source] ?? recipe.source}
-            </span>
           </div>
           <div className="recipe-card-content">
+            <span className="recipe-card-source">{sourceLabels[recipe.source] ?? recipe.source}</span>
             <h3>{recipe.title}</h3>
             {recipe.description && (
               <p className="recipe-card-description">{recipe.description}</p>
             )}
             <div className="recipe-card-meta">
-              <span className="recipe-card-servings">{recipe.baseServings} serving{recipe.baseServings !== 1 ? "s" : ""}</span>
+              <span className="recipe-card-score">
+                {recipe.latestScore != null ? `${recipe.latestScore}/10` : "Unreviewed"}
+              </span>
               <span className="recipe-card-date">{formatDate(recipe.createdAt)}</span>
             </div>
           </div>

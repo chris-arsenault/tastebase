@@ -1,10 +1,10 @@
 use shared::types::{NutritionFacts, ProductType};
 use uuid::Uuid;
 
+use crate::Ctx;
 use crate::llm::{
     build_vision_prompt, clamp_score_i16, invoke_claude, normalize_number, parse_json_from_text,
 };
-use crate::Ctx;
 
 /// Result of image analysis for product identification.
 pub struct ImageExtraction {
@@ -55,7 +55,14 @@ Use null for any field you cannot determine."#;
     let text = invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await?;
     let parsed = match parse_json_from_text(&text) {
         Some(p) => p,
-        None => return Ok(ImageExtraction { product_type: None, name: None, maker: None, style: None }),
+        None => {
+            return Ok(ImageExtraction {
+                product_type: None,
+                name: None,
+                maker: None,
+                style: None,
+            });
+        }
     };
 
     let product_type = match parsed.get("product_type").and_then(|v| v.as_str()) {
@@ -65,9 +72,18 @@ Use null for any field you cannot determine."#;
 
     Ok(ImageExtraction {
         product_type,
-        name: parsed.get("name").and_then(|v| v.as_str()).map(String::from),
-        maker: parsed.get("maker").and_then(|v| v.as_str()).map(String::from),
-        style: parsed.get("style").and_then(|v| v.as_str()).map(String::from),
+        name: parsed
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        maker: parsed
+            .get("maker")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        style: parsed
+            .get("style")
+            .and_then(|v| v.as_str())
+            .map(String::from),
     })
 }
 
@@ -104,7 +120,11 @@ Guidelines:
             arr.iter()
                 .filter_map(|item| {
                     let s = item.as_str()?.trim();
-                    if s.is_empty() { None } else { Some(s.to_string()) }
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s.to_string())
+                    }
                 })
                 .collect::<Vec<_>>()
         });
@@ -143,19 +163,38 @@ Guidelines:
     let text = invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await?;
     let parsed = match parse_json_from_text(&text) {
         Some(p) => p,
-        None => return Ok(NutritionExtraction { nutrition_facts: None }),
+        None => {
+            return Ok(NutritionExtraction {
+                nutrition_facts: None,
+            });
+        }
     };
 
     let nutrition_facts = parsed.get("nutrition_facts").and_then(|raw| {
         let obj = raw.as_object()?;
         Some(NutritionFacts {
-            serving_size: obj.get("serving_size").and_then(|v| v.as_str()).map(String::from),
-            calories: obj.get("calories").and_then(normalize_number).map(|n| n as i32),
-            total_fat: obj.get("total_fat").and_then(|v| v.as_str()).map(String::from),
+            serving_size: obj
+                .get("serving_size")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            calories: obj
+                .get("calories")
+                .and_then(normalize_number)
+                .map(|n| n as i32),
+            total_fat: obj
+                .get("total_fat")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             sodium: obj.get("sodium").and_then(|v| v.as_str()).map(String::from),
-            total_carbs: obj.get("total_carbs").and_then(|v| v.as_str()).map(String::from),
+            total_carbs: obj
+                .get("total_carbs")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             sugars: obj.get("sugars").and_then(|v| v.as_str()).map(String::from),
-            protein: obj.get("protein").and_then(|v| v.as_str()).map(String::from),
+            protein: obj
+                .get("protein")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         })
     });
 
@@ -172,12 +211,11 @@ pub async fn apply_image_enrichment(
     extraction: &ImageExtraction,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Fetch current values to respect user-provided data
-    let row: Option<CurrentImageFields> = sqlx::query_as(
-        "SELECT product_type, name, maker, style FROM tastings WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(db)
-    .await?;
+    let row: Option<CurrentImageFields> =
+        sqlx::query_as("SELECT product_type, name, maker, style FROM tastings WHERE id = $1")
+            .bind(id)
+            .fetch_optional(db)
+            .await?;
 
     let current = match row {
         Some(r) => r,
@@ -281,25 +319,28 @@ pub async fn extract_voice_metrics(
     transcript: &str,
 ) -> Result<VoiceMetrics, Box<dyn std::error::Error + Send + Sync>> {
     if transcript.is_empty() {
-        return Ok(VoiceMetrics { score: None, heat_user: None });
+        return Ok(VoiceMetrics {
+            score: None,
+            heat_user: None,
+        });
     }
 
-    let instructions =
-        "Extract user tasting details from this transcript. Return JSON only with keys: score, heat_user. Use null for unknowns.";
+    let instructions = "Extract user tasting details from this transcript. Return JSON only with keys: score, heat_user. Use null for unknowns.";
     let payload = crate::llm::build_text_prompt(instructions, transcript);
     let text = invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await?;
     let parsed = match parse_json_from_text(&text) {
         Some(p) => p,
-        None => return Ok(VoiceMetrics { score: None, heat_user: None }),
+        None => {
+            return Ok(VoiceMetrics {
+                score: None,
+                heat_user: None,
+            });
+        }
     };
 
     Ok(VoiceMetrics {
-        score: clamp_score_i16(
-            parsed.get("score").and_then(normalize_number),
-        ),
-        heat_user: clamp_score_i16(
-            parsed.get("heat_user").and_then(normalize_number),
-        ),
+        score: clamp_score_i16(parsed.get("score").and_then(normalize_number)),
+        heat_user: clamp_score_i16(parsed.get("heat_user").and_then(normalize_number)),
     })
 }
 
@@ -346,4 +387,24 @@ pub async fn apply_voice_metrics(
         }
     }
     Ok(())
+}
+
+/// Extract a simple 1-10 score from a recipe review transcript.
+/// Returns None if no score is mentioned. Reuses the LLM + parse helpers.
+pub async fn extract_review_score(
+    ctx: &Ctx,
+    transcript: &str,
+) -> Result<i16, Box<dyn std::error::Error + Send + Sync>> {
+    let instructions = "Extract the numeric score from this recipe review. \
+         Look for phrases like '6 out of 10', 'I'd give it a 7', 'solid 9', '8/10', etc. \
+         The score is always on a 1-10 scale. \
+         If no explicit score is stated, infer from sentiment (1=terrible, 5=average, 10=perfect). \
+         You MUST return valid JSON and nothing else: {\"score\": N} where N is an integer 1-10.";
+
+    let payload = crate::llm::build_text_prompt(instructions, transcript);
+    let text = invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await?;
+    let parsed = parse_json_from_text(&text).ok_or("failed to parse score JSON")?;
+    let raw = parsed.get("score").and_then(normalize_number);
+    let score = clamp_score_i16(raw).ok_or("no score in response")?;
+    Ok(score)
 }

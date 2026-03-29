@@ -16,6 +16,7 @@ export function useRecorder(onError: (msg: string) => void) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState("");
   const [audioBase64, setAudioBase64] = useState("");
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioMimeType, setAudioMimeType] = useState("");
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
 
@@ -27,6 +28,7 @@ export function useRecorder(onError: (msg: string) => void) {
 
   const onRecordingDone = (chunks: Blob[], mimeType: string, stream: MediaStream) => {
     const blob = new Blob(chunks, { type: mimeType });
+    setAudioBlob(blob);
     setAudioMimeType(mimeType || "audio/webm");
     setAudioUrl(URL.createObjectURL(blob));
     fileToBase64(blob)
@@ -64,8 +66,9 @@ export function useRecorder(onError: (msg: string) => void) {
   const clear = () => {
     setAudioUrl("");
     setAudioBase64("");
+    setAudioBlob(null);
     setAudioMimeType("");
   };
 
-  return { isRecording, audioUrl, audioBase64, audioMimeType, start, stop, clear };
+  return { isRecording, audioUrl, audioBase64, audioBlob, audioMimeType, start, stop, clear };
 }

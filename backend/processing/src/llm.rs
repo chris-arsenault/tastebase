@@ -48,17 +48,38 @@ pub async fn invoke_claude(
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let body = serde_json::to_vec(payload)?;
 
-    let resp = client
+    tracing::info!(model_id, payload_bytes = body.len(), "invoking bedrock");
+
+    let resp = match client
         .invoke_model()
         .model_id(model_id)
         .content_type("application/json")
         .accept("application/json")
         .body(aws_sdk_bedrockruntime::primitives::Blob::new(body))
         .send()
-        .await?;
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let raw = format!("{e:?}");
+            let source = e
+                .into_service_error()
+                .meta()
+                .message()
+                .unwrap_or("unknown")
+                .to_string();
+            tracing::error!(model_id, error = %source, raw = %raw, "bedrock invoke failed");
+            return Err(source.into());
+        }
+    };
 
     let response_bytes = resp.body().as_ref();
     let response_str = std::str::from_utf8(response_bytes)?;
+    tracing::info!(
+        model_id,
+        response_len = response_str.len(),
+        "bedrock invoke success"
+    );
     Ok(extract_claude_text(response_str))
 }
 
