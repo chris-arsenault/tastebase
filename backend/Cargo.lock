@@ -2270,6 +2270,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "lambda_http",
+ "serde",
+ "serde_json",
+ "shared",
+ "sqlx",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,8 +1,7 @@
 # Tastebase
 
 General culinary platform — tasting tracker + recipe storage with Claude.ai MCP integration.
-Evolved from scorchbook (hot sauce tracker). Scorchbook remains untouched at
-`~/src/websites/apps/scorchbook/` as a read-only reference.
+Evolved from scorchbook (hot sauce tracker). Data fully migrated, scorchbook decommissioned.
 
 ## Architecture
 
@@ -56,26 +55,19 @@ PostgreSQL via shared RDS. Migrations in `db/migrations/`. Uses `sqlx` with
 runtime query strings (not compile-time checked).
 
 Schema: `users` + `cognito_users` (shared identity), `tastings` (tasting records),
-`recipes` + `recipe_ingredients` + `recipe_steps` + `collections` (recipe system).
+`recipes` + `recipe_ingredients` + `recipe_steps` + `collections` (recipe system),
+`recipe_reviews` + `recipe_images` (recipe media and reviews).
 
 ## Platform Integration
 
-Follows `~/src/platform/INTEGRATION.md`. Registration files in `docs/`:
-- `docs/platform-control-registration.tf` — managed-project module for platform-control repo
-- `docs/platform-services-registration.md` — migration_projects entry for platform-services repo
-
-Cognito resource server defines `recipe/read` and `recipe/write` scopes for MCP OAuth.
-
-## Data Migration
-
-`scripts/migrate-dynamo.sh` exports scorchbook DynamoDB data to SQL seed file
-(`db/migrations/seed/001_migrate_dynamo.sql`). One-time operation for cutover.
+Follows `~/src/platform/INTEGRATION.md`. Registered in platform-control and platform-services.
 
 ## Key Decisions
 
 - ALB routes by path prefix to separate Lambdas (no API Gateway)
-- App-level JWT validation (not ALB jwt-validation) because endpoints mix public reads + authenticated writes
-- MCP server needs selective auth per MCP protocol (initialize is unauthenticated)
-- Processing Lambda is invoked asynchronously by tastings-api for media enrichment
-- S3 for media blobs, PostgreSQL for structured data only
-- Tastings are public-read, write requires auth (same as scorchbook, not the spec's private-by-default)
+- ALB jwt-validation for tastings/recipes write routes; MCP uses app-level auth for WWW-Authenticate header
+- Public reads (GET) have no jwt-validation; writes require it
+- Processing Lambda is invoked asynchronously for media enrichment (tastings + recipe reviews)
+- S3 for media blobs (presigned upload URLs), PostgreSQL for structured data
+- OG Lambda generates HTML with per-recipe OpenGraph tags; CloudFront caches at edge
+- Path-based routing (not hash) for crawler compatibility

@@ -48,14 +48,14 @@ type RouteState =
   | { section: "recipes"; recipeSlug: null }
   | { section: "recipes"; recipeSlug: string };
 
-function parseHash(): RouteState {
-  const hash = window.location.hash.replace(/^#\/?/, "");
-  if (hash.startsWith("recipes/")) {
-    const slug = hash.slice("recipes/".length);
+function parsePath(): RouteState {
+  const path = window.location.pathname;
+  if (path.startsWith("/recipes/")) {
+    const slug = path.slice("/recipes/".length);
     if (slug) return { section: "recipes", recipeSlug: slug };
     return { section: "recipes", recipeSlug: null };
   }
-  if (hash === "recipes") {
+  if (path === "/recipes") {
     return { section: "recipes", recipeSlug: null };
   }
   return { section: "tastings", recipeSlug: null };
@@ -187,25 +187,30 @@ function RecipesSection({ recipesHook, onSelect }: Readonly<{
   );
 }
 
-function useHashRouter(recipes: Recipe[]) {
-  const [route, setRoute] = useState<RouteState>(parseHash);
+function navigate(path: string) {
+  window.history.pushState(null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function useRouter(recipes: Recipe[]) {
+  const [route, setRoute] = useState<RouteState>(parsePath);
 
   useEffect(() => {
-    const onHashChange = () => setRoute(parseHash());
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
+    const onNav = () => setRoute(parsePath());
+    window.addEventListener("popstate", onNav);
+    return () => window.removeEventListener("popstate", onNav);
   }, []);
 
   const setSection = useCallback((s: AppSection) => {
-    window.location.hash = s === "recipes" ? "#/recipes" : "#/";
+    navigate(s === "recipes" ? "/recipes" : "/");
   }, []);
 
   const handleSelectRecipe = useCallback((recipe: Recipe) => {
-    window.location.hash = `#/recipes/${slugify(recipe.title)}`;
+    navigate(`/recipes/${slugify(recipe.title)}`);
   }, []);
 
   const handleBackToRecipes = useCallback(() => {
-    window.location.hash = "#/recipes";
+    navigate("/recipes");
   }, []);
 
   const selectedRecipe = useMemo(() => {
@@ -221,7 +226,7 @@ const App = () => {
   const tastings = useTastings(auth);
   const { filters, setFilters, filteredTastings, activeFilterCount, resetFilters } = useFilters(tastings.tastings);
   const recipesHook = useRecipes();
-  const { section, selectedRecipe, setSection, handleSelectRecipe, handleBackToRecipes } = useHashRouter(recipesHook.recipes);
+  const { section, selectedRecipe, setSection, handleSelectRecipe, handleBackToRecipes } = useRouter(recipesHook.recipes);
   const menu = useMemo(() => ({ open: menuOpen, setOpen: setMenuOpen }), [menuOpen, setMenuOpen]);
   const handleRecipeDeleted = useCallback(() => { recipesHook.reload(); handleBackToRecipes(); }, [recipesHook, handleBackToRecipes]);
 

@@ -451,7 +451,7 @@ async fn save_recipe(
 
     tracing::info!(recipe_id = %recipe_id, "recipe saved via MCP");
     let slug = slugify(&params.title);
-    let url = format!("https://tastebase.ahara.io/#/recipes/{slug}");
+    let url = format!("https://tastebase.ahara.io/recipes/{slug}");
     Ok(serde_json::json!({
         "recipe_id": recipe_id,
         "url": url,
