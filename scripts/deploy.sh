@@ -22,6 +22,10 @@ if [ -f "package.json" ]; then
 fi
 cd "${ROOT_DIR}"
 
+# Run migrations
+echo "Running migrations..."
+db-migrate
+
 # Deploy infrastructure
 echo "Deploying infrastructure..."
 terraform -chdir="${TF_DIR}" init -reconfigure \
