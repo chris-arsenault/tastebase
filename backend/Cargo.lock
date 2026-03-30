@@ -216,6 +216,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-cloudfront"
+version = "1.114.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a52f9d42eb3442fc973ee6946dbb3f67723f99c6c6abc1e80bf5277f9bc36d83"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http 0.63.6",
+ "aws-smithy-json 0.62.5",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-smithy-xml",
+ "aws-types",
+ "fastrand",
+ "http 0.2.12",
+ "http 1.4.0",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-lambda"
 version = "1.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2740,6 +2764,7 @@ name = "recipes-api"
 version = "0.1.0"
 dependencies = [
  "aws-config",
+ "aws-sdk-cloudfront",
  "aws-sdk-lambda",
  "axum",
  "lambda_http",

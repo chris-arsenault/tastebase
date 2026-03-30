@@ -15,7 +15,7 @@ async fn list_recipes(State(state): State<AppState>) -> Result<Json<serde_json::
         "SELECT r.*, ri.image_url AS thumbnail_url, rv.score AS latest_score
          FROM recipes r
          LEFT JOIN LATERAL (
-           SELECT image_url FROM recipe_images WHERE recipe_id = r.id ORDER BY sort_order, created_at LIMIT 1
+           SELECT image_url FROM recipe_images WHERE recipe_id = r.id ORDER BY created_at DESC LIMIT 1
          ) ri ON true
          LEFT JOIN LATERAL (
            SELECT score FROM recipe_reviews WHERE recipe_id = r.id AND status = 'complete' ORDER BY created_at DESC LIMIT 1
@@ -59,7 +59,7 @@ async fn get_recipe(
     .await?;
 
     let images: Vec<RecipeImage> = sqlx::query_as(
-        "SELECT * FROM recipe_images WHERE recipe_id = $1 ORDER BY sort_order, created_at",
+        "SELECT * FROM recipe_images WHERE recipe_id = $1 ORDER BY created_at",
     )
     .bind(id)
     .fetch_all(&state.db)
@@ -278,7 +278,78 @@ async fn confirm_image(
         .await?;
 
     tracing::info!(recipe_id = %recipe_id, key = %input.key, "recipe image confirmed");
+
+    invalidate_recipe_og(recipe_id, &state.db).await;
+
     Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+fn slugify(title: &str) -> String {
+    title
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+async fn invalidate_recipe_og(recipe_id: Uuid, db: &sqlx::PgPool) {
+    let distribution_id = match std::env::var("CLOUDFRONT_DISTRIBUTION_ID") {
+        Ok(id) if !id.is_empty() => id,
+        _ => {
+            tracing::warn!("CLOUDFRONT_DISTRIBUTION_ID not set, skipping invalidation");
+            return;
+        }
+    };
+
+    let title: Option<(String,)> =
+        sqlx::query_as("SELECT title FROM recipes WHERE id = $1")
+            .bind(recipe_id)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten();
+
+    let slug = match title {
+        Some((t,)) => slugify(&t),
+        None => {
+            tracing::warn!(recipe_id = %recipe_id, "recipe not found for OG invalidation");
+            return;
+        }
+    };
+
+    let path = format!("/recipes/{slug}");
+    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let client = aws_sdk_cloudfront::Client::new(&config);
+
+    let paths = aws_sdk_cloudfront::types::Paths::builder()
+        .quantity(1)
+        .items(&path)
+        .build()
+        .unwrap();
+
+    let batch = aws_sdk_cloudfront::types::InvalidationBatch::builder()
+        .paths(paths)
+        .caller_reference(format!("{recipe_id}-{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()))
+        .build()
+        .unwrap();
+
+    match client
+        .create_invalidation()
+        .distribution_id(&distribution_id)
+        .invalidation_batch(batch)
+        .send()
+        .await
+    {
+        Ok(_) => tracing::info!(path = %path, "CloudFront OG invalidation created"),
+        Err(e) => tracing::error!(path = %path, error = %e, "failed to invalidate CloudFront"),
+    }
 }
 
 // -- Submit voice review: register and trigger processing --

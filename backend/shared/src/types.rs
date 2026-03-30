@@ -301,7 +301,6 @@ pub struct RecipeImage {
     pub image_url: String,
     pub image_key: String,
     pub caption: String,
-    pub sort_order: i32,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }

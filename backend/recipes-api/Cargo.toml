@@ -20,4 +20,5 @@ uuid = { workspace = true }
 time = { workspace = true }
 rust_decimal = "1"
 aws-config = { workspace = true }
+aws-sdk-cloudfront = { workspace = true }
 aws-sdk-lambda = { workspace = true }

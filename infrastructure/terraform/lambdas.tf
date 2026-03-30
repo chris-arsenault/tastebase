@@ -62,6 +62,11 @@ resource "aws_iam_role_policy" "lambda" {
         Effect   = "Allow"
         Action   = ["lambda:InvokeFunction"]
         Resource = aws_lambda_function.processing.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["cloudfront:CreateInvalidation"]
+        Resource = aws_cloudfront_distribution.frontend.arn
       }
     ]
   })
@@ -140,7 +145,8 @@ resource "aws_lambda_function" "recipes_api" {
 
   environment {
     variables = merge(local.common_env, {
-      PROCESSING_FUNCTION_NAME = aws_lambda_function.processing.function_name
+      PROCESSING_FUNCTION_NAME   = aws_lambda_function.processing.function_name
+      CLOUDFRONT_DISTRIBUTION_ID = aws_cloudfront_distribution.frontend.id
     })
   }
 }

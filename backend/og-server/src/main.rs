@@ -38,7 +38,7 @@ async fn lookup_recipe(db: &PgPool, slug: &str) -> Option<RecipeMeta> {
          FROM recipes r
          LEFT JOIN LATERAL (
            SELECT image_url FROM recipe_images WHERE recipe_id = r.id
-           ORDER BY sort_order, created_at LIMIT 1
+           ORDER BY created_at DESC LIMIT 1
          ) ri ON true",
     )
     .fetch_all(db)
