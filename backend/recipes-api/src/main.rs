@@ -58,12 +58,11 @@ async fn get_recipe(
     .fetch_all(&state.db)
     .await?;
 
-    let images: Vec<RecipeImage> = sqlx::query_as(
-        "SELECT * FROM recipe_images WHERE recipe_id = $1 ORDER BY created_at",
-    )
-    .bind(id)
-    .fetch_all(&state.db)
-    .await?;
+    let images: Vec<RecipeImage> =
+        sqlx::query_as("SELECT * FROM recipe_images WHERE recipe_id = $1 ORDER BY created_at")
+            .bind(id)
+            .fetch_all(&state.db)
+            .await?;
 
     tracing::info!(recipe_id = %id, ingredients = ingredients.len(), steps = steps.len(), reviews = reviews.len(), images = images.len(), "recipe fetched");
     let full = RecipeFull {
@@ -305,13 +304,12 @@ async fn invalidate_recipe_og(recipe_id: Uuid, db: &sqlx::PgPool) {
         }
     };
 
-    let title: Option<(String,)> =
-        sqlx::query_as("SELECT title FROM recipes WHERE id = $1")
-            .bind(recipe_id)
-            .fetch_optional(db)
-            .await
-            .ok()
-            .flatten();
+    let title: Option<(String,)> = sqlx::query_as("SELECT title FROM recipes WHERE id = $1")
+        .bind(recipe_id)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
 
     let slug = match title {
         Some((t,)) => slugify(&t),
@@ -333,10 +331,13 @@ async fn invalidate_recipe_og(recipe_id: Uuid, db: &sqlx::PgPool) {
 
     let batch = aws_sdk_cloudfront::types::InvalidationBatch::builder()
         .paths(paths)
-        .caller_reference(format!("{recipe_id}-{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()))
+        .caller_reference(format!(
+            "{recipe_id}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        ))
         .build()
         .unwrap();
 
