@@ -109,6 +109,7 @@ export type RecipeIngredient = {
   amount: number;
   unit: string;
   sortOrder: number;
+  linkedRecipeId?: string | null;
 };
 
 export type RecipeStep = {

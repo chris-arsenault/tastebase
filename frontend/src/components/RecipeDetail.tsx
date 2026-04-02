@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { deleteRecipe, fetchRecipe } from "../api";
 import { RecipeImages, RecipeReviews, ReviewCapture } from "./RecipeMedia";
 import type { RecipeFull, RecipeIngredient } from "../types";
+
+function slugify(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+
+function navigateToRecipe(slug: string) {
+  window.history.pushState(null, "", `/recipes/${slug}`);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
 
 const sourceLabels: Record<string, string> = { claude: "Recipe by Claude", manual: "Manual", import: "Imported" };
 
@@ -101,7 +110,80 @@ const formatAmount = (n: number): string => {
   return n.toFixed(1).replace(/\.0$/, "");
 };
 
-function RecipeIngredients({ ingredients, scale }: Readonly<{ ingredients: RecipeFull["ingredients"]; scale: number }>) {
+function LinkedIngredientRow({ ing, scale, cache }: Readonly<{
+  ing: RecipeIngredient; scale: number; cache: React.MutableRefObject<Map<string, RecipeFull>>;
+}>) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [preview, setPreview] = useState<RecipeFull | null>(() => cache.current.get(ing.linkedRecipeId!) ?? null);
+  const [fetchStarted, setFetchStarted] = useState(false);
+  const timerRef = useRef<number>(0);
+  const linkedId = ing.linkedRecipeId!;
+
+  const startHover = useCallback(() => {
+    if (!fetchStarted && !cache.current.has(linkedId)) {
+      setFetchStarted(true);
+      fetchRecipe(linkedId).then((data) => {
+        cache.current.set(linkedId, data);
+        setPreview(data);
+      }).catch(() => {});
+    }
+    timerRef.current = window.setTimeout(() => setShowTooltip(true), 200);
+  }, [linkedId, cache, fetchStarted]);
+
+  const endHover = useCallback(() => {
+    clearTimeout(timerRef.current);
+    setShowTooltip(false);
+  }, []);
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const handleClick = useCallback(() => {
+    const cached = cache.current.get(linkedId);
+    if (cached) {
+      navigateToRecipe(slugify(cached.title));
+      return;
+    }
+    fetchRecipe(linkedId).then((data) => {
+      cache.current.set(linkedId, data);
+      navigateToRecipe(slugify(data.title));
+    }).catch(() => {});
+  }, [linkedId, cache]);
+
+  const thumbUrl = preview?.images?.[0]?.imageUrl;
+
+  return (
+    <li className="recipe-ing-linked-row" onMouseEnter={startHover} onMouseLeave={endHover}>
+      <span className="recipe-ing-amount">{formatAmount(ing.amount * scale)} {ing.unit}</span>
+      <button type="button" className="recipe-ing-linked" onClick={handleClick}>
+        {ing.name}
+        <span className="recipe-ing-linked-icon" aria-hidden="true">{"\u2197"}</span>
+      </button>
+      {showTooltip && (
+        <div className="recipe-linked-tooltip">
+          {!preview ? (
+            <span className="recipe-linked-tooltip-loading">{"\u2026"}</span>
+          ) : (
+            <>
+              {thumbUrl && <img className="recipe-linked-tooltip-thumb" src={thumbUrl} alt="" />}
+              <div className="recipe-linked-tooltip-info">
+                <span className="recipe-linked-tooltip-title">{preview.title}</span>
+                {preview.description && <span className="recipe-linked-tooltip-desc">{preview.description}</span>}
+                <span className="recipe-linked-tooltip-meta">
+                  {preview.ingredients.length} ingredient{preview.ingredients.length !== 1 ? "s" : ""} {"\u00B7"} {preview.baseServings} serving{preview.baseServings !== 1 ? "s" : ""}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function RecipeIngredients({ ingredients, scale, linkedRecipeCache }: Readonly<{
+  ingredients: RecipeFull["ingredients"]; scale: number;
+  linkedRecipeCache: React.MutableRefObject<Map<string, RecipeFull>>;
+}>) {
   if (ingredients.length === 0) return null;
   return (
     <section className="recipe-ingredients-section">
@@ -109,27 +191,58 @@ function RecipeIngredients({ ingredients, scale }: Readonly<{ ingredients: Recip
       <ul className="recipe-ingredients-list">
         {ingredients
           .slice().sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((ing) => (
-            <li key={ing.id}>
-              <span className="recipe-ing-amount">{formatAmount(ing.amount * scale)} {ing.unit}</span>
-              <span className="recipe-ing-name">{ing.name}</span>
-            </li>
-          ))}
+          .map((ing) =>
+            ing.linkedRecipeId ? (
+              <LinkedIngredientRow key={ing.id} ing={ing} scale={scale} cache={linkedRecipeCache} />
+            ) : (
+              <li key={ing.id}>
+                <span className="recipe-ing-amount">{formatAmount(ing.amount * scale)} {ing.unit}</span>
+                <span className="recipe-ing-name">{ing.name}</span>
+              </li>
+            )
+          )}
       </ul>
     </section>
   );
 }
 
-function resolveTokens(content: string, ingredientMap: Map<string, string>): React.ReactNode[] {
+type IngredientInfo = { name: string; linkedRecipeId?: string | null };
+
+function resolveTokens(
+  content: string,
+  ingredientMap: Map<string, IngredientInfo>,
+  linkedRecipeCache: React.MutableRefObject<Map<string, RecipeFull>>,
+): React.ReactNode[] {
   const result: React.ReactNode[] = [];
   let lastIndex = 0;
   const re = /\{(\w+)\}/g;
   let match = re.exec(content);
   while (match !== null) {
     if (match.index > lastIndex) result.push(content.slice(lastIndex, match.index));
-    const name = ingredientMap.get(match[1]);
-    if (name) {
-      result.push(<strong key={match.index} className="recipe-ingredient-token">{name}</strong>);
+    const info = ingredientMap.get(match[1]);
+    if (info) {
+      if (info.linkedRecipeId) {
+        const linkedId = info.linkedRecipeId;
+        result.push(
+          <button
+            key={match.index}
+            type="button"
+            className="recipe-ingredient-token recipe-ingredient-token-linked"
+            onClick={() => {
+              const cached = linkedRecipeCache.current.get(linkedId);
+              if (cached) { navigateToRecipe(slugify(cached.title)); return; }
+              fetchRecipe(linkedId).then((data) => {
+                linkedRecipeCache.current.set(linkedId, data);
+                navigateToRecipe(slugify(data.title));
+              }).catch(() => {});
+            }}
+          >
+            {info.name}
+          </button>
+        );
+      } else {
+        result.push(<strong key={match.index} className="recipe-ingredient-token">{info.name}</strong>);
+      }
     } else {
       result.push(match[0]);
     }
@@ -140,14 +253,15 @@ function resolveTokens(content: string, ingredientMap: Map<string, string>): Rea
   return result;
 }
 
-function buildIngredientMap(ingredients: RecipeIngredient[]): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const ing of ingredients) map.set(ing.widgetId, ing.shortName || ing.name);
+function buildIngredientMap(ingredients: RecipeIngredient[]): Map<string, IngredientInfo> {
+  const map = new Map<string, IngredientInfo>();
+  for (const ing of ingredients) map.set(ing.widgetId, { name: ing.shortName || ing.name, linkedRecipeId: ing.linkedRecipeId });
   return map;
 }
 
-function RecipeSteps({ steps, ingredients }: Readonly<{
+function RecipeSteps({ steps, ingredients, linkedRecipeCache }: Readonly<{
   steps: RecipeFull["steps"]; ingredients: RecipeFull["ingredients"];
+  linkedRecipeCache: React.MutableRefObject<Map<string, RecipeFull>>;
 }>) {
   if (steps.length === 0) return null;
   const ingredientMap = buildIngredientMap(ingredients);
@@ -161,7 +275,7 @@ function RecipeSteps({ steps, ingredients }: Readonly<{
                 <span className="recipe-step-title">{step.title}</span>
                 {step.timerSeconds !== null && <span className="recipe-timer-badge">{formatTimer(step.timerSeconds)}</span>}
               </div>
-              <p className="recipe-step-content">{resolveTokens(step.content, ingredientMap)}</p>
+              <p className="recipe-step-content">{resolveTokens(step.content, ingredientMap, linkedRecipeCache)}</p>
             </li>
           ))}
       </ol>
@@ -174,11 +288,12 @@ function RecipeBody({ recipe, token, onReviewSubmitted }: Readonly<{
 }>) {
   const [servings, setServings] = useState(recipe.baseServings);
   const scale = servings / recipe.baseServings;
+  const linkedRecipeCache = useRef(new Map<string, RecipeFull>());
   return (
     <>
       <RecipeHeader recipe={recipe} servings={servings} onServingsChange={setServings} />
-      <RecipeIngredients ingredients={recipe.ingredients} scale={scale} />
-      <RecipeSteps steps={recipe.steps} ingredients={recipe.ingredients} />
+      <RecipeIngredients ingredients={recipe.ingredients} scale={scale} linkedRecipeCache={linkedRecipeCache} />
+      <RecipeSteps steps={recipe.steps} ingredients={recipe.ingredients} linkedRecipeCache={linkedRecipeCache} />
       {recipe.notes && (
         <section className="recipe-notes-section">
           <h3>Notes</h3>
