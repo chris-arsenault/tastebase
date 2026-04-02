@@ -96,6 +96,7 @@ struct IngredientInput {
     short_name: Option<String>,
     amount: f64,
     unit: Option<UnitType>,
+    linked_recipe_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -150,8 +151,8 @@ async fn create_recipe(
         let name = shared::sanitize::clean(&ing.name);
         let short_name = shared::sanitize::clean_or_empty(ing.short_name.as_deref());
         sqlx::query(
-            "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(recipe_id)
         .bind(&ing.id)
@@ -160,6 +161,7 @@ async fn create_recipe(
         .bind(rust_decimal::Decimal::try_from(ing.amount).unwrap_or_default())
         .bind(unit)
         .bind(i as i32)
+        .bind(ing.linked_recipe_id)
         .execute(&mut *tx)
         .await?;
     }

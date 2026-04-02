@@ -262,6 +262,7 @@ pub struct RecipeIngredient {
     pub amount: rust_decimal::Decimal,
     pub unit: UnitType,
     pub sort_order: i32,
+    pub linked_recipe_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

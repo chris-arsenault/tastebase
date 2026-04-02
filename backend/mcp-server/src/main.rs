@@ -206,12 +206,28 @@ fn handle_ping(msg: McpMessage) -> Result<JsonRpcResponse, JsonRpcResponse> {
 }
 
 fn handle_tools_list(msg: McpMessage) -> Result<JsonRpcResponse, JsonRpcResponse> {
-    let tools = vec![save_recipe_tool_def()];
+    let tools = vec![list_recipes_tool_def(), save_recipe_tool_def()];
     tracing::info!(tool_count = tools.len(), "tools/list");
     Ok(jsonrpc_result(
         msg.id,
         serde_json::json!({ "tools": tools }),
     ))
+}
+
+fn list_recipes_tool_def() -> serde_json::Value {
+    serde_json::json!({
+        "name": "list_recipes",
+        "description": "List saved recipes. Returns id, title, and description for each recipe. Use this to find existing recipes that can be linked as ingredients in other recipes (via linked_recipe_id in save_recipe).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "search": {
+                    "type": "string",
+                    "description": "Optional text filter — matches against recipe title (case-insensitive substring match). Omit to list all recipes."
+                }
+            }
+        }
+    })
 }
 
 fn save_recipe_tool_def() -> serde_json::Value {
@@ -265,6 +281,10 @@ fn save_recipe_tool_def() -> serde_json::Value {
                             "unit": {
                                 "type": "string",
                                 "description": "Unit of measurement. Must be one of: g, kg, ml, l, tsp, tbsp, cup, fl_oz, oz, lb, pinch, piece, or empty string for unitless items (e.g. '2 lemons')."
+                            },
+                            "linked_recipe_id": {
+                                "type": "string",
+                                "description": "Optional UUID of another recipe that this ingredient refers to. Use list_recipes to find the ID. Example: if this ingredient is '1 cup olive tapenade' and there's already a tapenade recipe saved, pass its ID here to link them."
                             }
                         }
                     }
@@ -314,6 +334,29 @@ async fn handle_tools_call(
         .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing tool name"))?;
 
     match tool_name {
+        "list_recipes" => {
+            let arguments = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+            let search = arguments.get("search").and_then(|v| v.as_str()).map(String::from);
+            match list_recipes(state, search).await {
+                Ok(result) => Ok(jsonrpc_result(
+                    msg.id,
+                    serde_json::json!({
+                        "content": [{ "type": "text", "text": serde_json::to_string(&result).unwrap() }],
+                        "isError": false
+                    }),
+                )),
+                Err(e) => {
+                    tracing::error!(error = %e, "list_recipes failed");
+                    Ok(jsonrpc_result(
+                        msg.id,
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": format!("list_recipes failed: {e}") }],
+                            "isError": true
+                        }),
+                    ))
+                }
+            }
+        }
         "save_recipe" => {
             let arguments = params
                 .get("arguments")
@@ -381,6 +424,7 @@ struct IngredientParam {
     short_name: String,
     amount: f64,
     unit: String,
+    linked_recipe_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -389,6 +433,44 @@ struct StepParam {
     title: String,
     content: String,
     timer_seconds: Option<i32>,
+}
+
+async fn list_recipes(
+    state: &AppState,
+    search: Option<String>,
+) -> Result<serde_json::Value, AppError> {
+    let rows: Vec<(Uuid, String, Option<String>)> = match &search {
+        Some(term) => {
+            let pattern = format!("%{term}%");
+            sqlx::query_as(
+                "SELECT id, title, description FROM recipes WHERE title ILIKE $1 ORDER BY created_at DESC",
+            )
+            .bind(&pattern)
+            .fetch_all(&state.db)
+            .await?
+        }
+        None => {
+            sqlx::query_as(
+                "SELECT id, title, description FROM recipes ORDER BY created_at DESC",
+            )
+            .fetch_all(&state.db)
+            .await?
+        }
+    };
+
+    let recipes: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(id, title, description)| {
+            serde_json::json!({
+                "id": id,
+                "title": title,
+                "description": description,
+            })
+        })
+        .collect();
+
+    tracing::info!(count = recipes.len(), search = ?search, "recipes listed via MCP");
+    Ok(serde_json::json!({ "recipes": recipes }))
 }
 
 async fn save_recipe(
@@ -417,9 +499,13 @@ async fn save_recipe(
 
     for (i, ing) in params.ingredients.iter().enumerate() {
         let unit = parse_unit(&ing.unit).unwrap_or(UnitType::None);
+        let linked_id: Option<Uuid> = ing
+            .linked_recipe_id
+            .as_deref()
+            .and_then(|s| s.parse().ok());
         sqlx::query(
-            "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(recipe_id)
         .bind(&ing.id)
@@ -428,6 +514,7 @@ async fn save_recipe(
         .bind(rust_decimal::Decimal::try_from(ing.amount).unwrap_or_default())
         .bind(unit)
         .bind(i as i32)
+        .bind(linked_id)
         .execute(&mut *tx)
         .await?;
     }
