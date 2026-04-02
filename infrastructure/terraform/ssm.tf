@@ -24,8 +24,11 @@ data "aws_ssm_parameter" "cognito_domain" {
   name = "/platform/cognito/domain"
 }
 
-data "aws_ssm_parameter" "private_subnet_ids" {
-  name = "/platform/network/private-subnet-ids"
+data "aws_subnets" "private" {
+  filter {
+    name   = "tag:subnet:access"
+    values = ["private"]
+  }
 }
 
 data "aws_ssm_parameter" "rds_security_group_id" {

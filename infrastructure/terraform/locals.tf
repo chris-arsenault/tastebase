@@ -29,5 +29,5 @@ locals {
     APP_BASE_URL         = "https://${local.frontend_hostname}"
   })
 
-  lambda_subnet_ids = split(",", nonsensitive(data.aws_ssm_parameter.private_subnet_ids.value))
+  lambda_subnet_ids = data.aws_subnets.private.ids
 }
