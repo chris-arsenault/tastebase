@@ -335,8 +335,14 @@ async fn handle_tools_call(
 
     match tool_name {
         "list_recipes" => {
-            let arguments = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
-            let search = arguments.get("search").and_then(|v| v.as_str()).map(String::from);
+            let arguments = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
+            let search = arguments
+                .get("search")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             match list_recipes(state, search).await {
                 Ok(result) => Ok(jsonrpc_result(
                     msg.id,
@@ -450,11 +456,9 @@ async fn list_recipes(
             .await?
         }
         None => {
-            sqlx::query_as(
-                "SELECT id, title, description FROM recipes ORDER BY created_at DESC",
-            )
-            .fetch_all(&state.db)
-            .await?
+            sqlx::query_as("SELECT id, title, description FROM recipes ORDER BY created_at DESC")
+                .fetch_all(&state.db)
+                .await?
         }
     };
 
@@ -499,10 +503,7 @@ async fn save_recipe(
 
     for (i, ing) in params.ingredients.iter().enumerate() {
         let unit = parse_unit(&ing.unit).unwrap_or(UnitType::None);
-        let linked_id: Option<Uuid> = ing
-            .linked_recipe_id
-            .as_deref()
-            .and_then(|s| s.parse().ok());
+        let linked_id: Option<Uuid> = ing.linked_recipe_id.as_deref().and_then(|s| s.parse().ok());
         sqlx::query(
             "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
