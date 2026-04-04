@@ -19,6 +19,8 @@ jobs:
       cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: hashicorp/setup-terraform@v4
 
       # Rust
@@ -86,7 +88,7 @@ jobs:
         continue-on-error: true
         with:
           project-key: tastebase
-          sources: backend/src,frontend/src,infrastructure/terraform
+          sources: backend,frontend/src,infrastructure/terraform
           exclusions: "**/target/**,**/node_modules/**,**/dist/**,**/.terraform/**"
 
       # Deploy (main only)
