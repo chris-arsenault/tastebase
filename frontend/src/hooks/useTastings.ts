@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
-import { createTasting, deleteTasting as apiDeleteTasting, fetchTastings, rerunTasting, updateTastingMedia } from "../api";
+import {
+  createTasting,
+  deleteTasting as apiDeleteTasting,
+  fetchTastings,
+  rerunTasting,
+  updateTastingMedia,
+} from "../api";
 import type { AuthState } from "./useAuth";
-import type { CreateTastingInput, TastingRecord, UpdateTastingMediaInput } from "../types";
+import type {
+  CreateTastingInput,
+  TastingRecord,
+  UpdateTastingMediaInput,
+} from "../types";
 
 type FormMode = "add" | "edit";
 
@@ -23,12 +33,13 @@ const emptyForm = {
   heatVendor: "",
   tastingNotesUser: "",
   tastingNotesVendor: "",
-  productUrl: ""
+  productUrl: "",
 };
 
 export type FormState = typeof emptyForm;
 
-const numToString = (value: number | null | undefined) => value != null ? String(value) : "";
+const numToString = (value: number | null | undefined) =>
+  value != null ? String(value) : "";
 
 const recordToFormState = (record: TastingRecord): FormState => ({
   name: record.name || "",
@@ -40,7 +51,7 @@ const recordToFormState = (record: TastingRecord): FormState => ({
   heatVendor: numToString(record.heatVendor),
   tastingNotesUser: record.tastingNotesUser || "",
   tastingNotesVendor: record.tastingNotesVendor || "",
-  productUrl: record.productUrl || ""
+  productUrl: record.productUrl || "",
 });
 
 type MediaData = {
@@ -54,10 +65,16 @@ type MediaData = {
   audioMimeType: string;
 };
 
-const trimFallback = (value: string, fallback: string) => value.trim() || fallback;
-const numFallback = (value: string, fallback: number | null) => toNumberOrNull(value) ?? fallback;
+const trimFallback = (value: string, fallback: string) =>
+  value.trim() || fallback;
+const numFallback = (value: string, fallback: number | null) =>
+  toNumberOrNull(value) ?? fallback;
 
-const buildEditedRecord = (existing: TastingRecord, base: TastingRecord, formData: FormState): TastingRecord => ({
+const buildEditedRecord = (
+  existing: TastingRecord,
+  base: TastingRecord,
+  formData: FormState,
+): TastingRecord => ({
   ...base,
   name: trimFallback(formData.name, existing.name),
   maker: trimFallback(formData.maker, existing.maker),
@@ -66,15 +83,27 @@ const buildEditedRecord = (existing: TastingRecord, base: TastingRecord, formDat
   style: trimFallback(formData.style, existing.style),
   heatUser: numFallback(formData.heatUser, existing.heatUser),
   heatVendor: numFallback(formData.heatVendor, existing.heatVendor),
-  tastingNotesUser: trimFallback(formData.tastingNotesUser, existing.tastingNotesUser),
-  tastingNotesVendor: trimFallback(formData.tastingNotesVendor, existing.tastingNotesVendor),
+  tastingNotesUser: trimFallback(
+    formData.tastingNotesUser,
+    existing.tastingNotesUser,
+  ),
+  tastingNotesVendor: trimFallback(
+    formData.tastingNotesVendor,
+    existing.tastingNotesVendor,
+  ),
   productUrl: trimFallback(formData.productUrl, existing.productUrl),
   needsAttention: false,
-  attentionReason: undefined
+  attentionReason: undefined,
 });
 
-const buildMediaPayload = (mediaData: MediaData): UpdateTastingMediaInput | null => {
-  const hasMedia = Boolean(mediaData.imageBase64 || mediaData.ingredientsImageBase64 || mediaData.nutritionImageBase64);
+const buildMediaPayload = (
+  mediaData: MediaData,
+): UpdateTastingMediaInput | null => {
+  const hasMedia = Boolean(
+    mediaData.imageBase64 ||
+    mediaData.ingredientsImageBase64 ||
+    mediaData.nutritionImageBase64,
+  );
   if (!hasMedia) return null;
   return {
     imageBase64: mediaData.imageBase64 || undefined,
@@ -82,11 +111,14 @@ const buildMediaPayload = (mediaData: MediaData): UpdateTastingMediaInput | null
     ingredientsImageBase64: mediaData.ingredientsImageBase64 || undefined,
     ingredientsImageMimeType: mediaData.ingredientsImageMimeType || undefined,
     nutritionImageBase64: mediaData.nutritionImageBase64 || undefined,
-    nutritionImageMimeType: mediaData.nutritionImageMimeType || undefined
+    nutritionImageMimeType: mediaData.nutritionImageMimeType || undefined,
   };
 };
 
-const buildCreatePayload = (formData: FormState, mediaData: MediaData): CreateTastingInput => ({
+const buildCreatePayload = (
+  formData: FormState,
+  mediaData: MediaData,
+): CreateTastingInput => ({
   name: trimOrUndefined(formData.name),
   maker: trimOrUndefined(formData.maker),
   date: formData.date || undefined,
@@ -104,7 +136,7 @@ const buildCreatePayload = (formData: FormState, mediaData: MediaData): CreateTa
   nutritionImageBase64: mediaData.nutritionImageBase64 || undefined,
   nutritionImageMimeType: mediaData.nutritionImageMimeType || undefined,
   voiceBase64: mediaData.audioBase64 || undefined,
-  voiceMimeType: mediaData.audioMimeType || undefined
+  voiceMimeType: mediaData.audioMimeType || undefined,
 });
 
 const asError = (error: unknown) => (error as Error).message;
@@ -113,7 +145,9 @@ function useFormState() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<FormMode>("add");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [viewingRecord, setViewingRecord] = useState<TastingRecord | null>(null);
+  const [viewingRecord, setViewingRecord] = useState<TastingRecord | null>(
+    null,
+  );
   const [form, setForm] = useState({ ...emptyForm });
   const [showManualFields, setShowManualFields] = useState(false);
   const [mediaExpanded, setMediaExpanded] = useState(true);
@@ -161,9 +195,22 @@ function useFormState() {
   };
 
   return {
-    formOpen, formMode, editingId, viewingRecord, form, setForm,
-    showManualFields, setShowManualFields, mediaExpanded, setMediaExpanded,
-    viewOpen, openAddForm, openEditForm, closeForm, openViewModal, closeViewModal
+    formOpen,
+    formMode,
+    editingId,
+    viewingRecord,
+    form,
+    setForm,
+    showManualFields,
+    setShowManualFields,
+    mediaExpanded,
+    setMediaExpanded,
+    viewOpen,
+    openAddForm,
+    openEditForm,
+    closeForm,
+    openViewModal,
+    closeViewModal,
   };
 }
 
@@ -174,95 +221,198 @@ function useInitialFetch() {
   useEffect(() => {
     let stale = false;
     fetchTastings()
-      .then((data) => { if (!stale) setTastings(data); })
-      .catch((e: unknown) => { if (!stale) setErrorMessage(asError(e)); })
-      .finally(() => { if (!stale) setLoading(false); });
-    return () => { stale = true; };
+      .then((data) => {
+        if (!stale) setTastings(data);
+      })
+      .catch((e: unknown) => {
+        if (!stale) setErrorMessage(asError(e));
+      })
+      .finally(() => {
+        if (!stale) setLoading(false);
+      });
+    return () => {
+      stale = true;
+    };
   }, []);
-  return { tastings, setTastings, loading, setLoading, errorMessage, setErrorMessage };
+  return {
+    tastings,
+    setTastings,
+    loading,
+    setLoading,
+    errorMessage,
+    setErrorMessage,
+  };
 }
 
-export function useTastings(auth: AuthState) {
-  const { tastings, setTastings, loading, setLoading, errorMessage, setErrorMessage } = useInitialFetch();
-  const [submitStatus, setSubmitStatus] = useState<"idle" | "saving" | "saved">("idle");
+type TastingOps = {
+  update: (id: string, updater: (t: TastingRecord) => TastingRecord) => void;
+  remove: (id: string) => void;
+  reload: (showLoading?: boolean) => void;
+  setError: (msg: string) => void;
+};
+
+function useTastingOps(
+  setTastings: React.Dispatch<React.SetStateAction<TastingRecord[]>>,
+  setLoading: (v: boolean) => void,
+  setErrorMessage: (msg: string) => void,
+): TastingOps {
+  return {
+    update: (id, updater) =>
+      setTastings((prev) => prev.map((t) => (t.id === id ? updater(t) : t))),
+    remove: (id) => setTastings((prev) => prev.filter((t) => t.id !== id)),
+    reload: (showLoading = false) => {
+      if (showLoading) setLoading(true);
+      fetchTastings()
+        .then(setTastings)
+        .catch((e: unknown) => setErrorMessage(asError(e)))
+        .finally(() => setLoading(false));
+    },
+    setError: setErrorMessage,
+  };
+}
+
+function useSubmission(
+  auth: AuthState,
+  formState: ReturnType<typeof useFormState>,
+  ops: TastingOps,
+) {
+  const [submitStatus, setSubmitStatus] = useState<"idle" | "saving" | "saved">(
+    "idle",
+  );
   const [rerunId, setRerunId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<TastingRecord | null>(null);
-  const [deleteStatus, setDeleteStatus] = useState<"idle" | "deleting">("idle");
-  const formState = useFormState();
 
-  useEffect(() => {
-    if (auth.status === "signedOut") { formState.closeForm(); formState.closeViewModal(); }
-  }, [auth.status]); // eslint-disable-line react-hooks/exhaustive-deps -- only react to auth changes
-
-  const updateTasting = (id: string, updater: (t: TastingRecord) => TastingRecord) =>
-    setTastings((prev) => prev.map((t) => (t.id === id ? updater(t) : t)));
-
-  const removeTasting = (id: string) =>
-    setTastings((prev) => prev.filter((t) => t.id !== id));
-
-  const loadTastings = (showLoading = false) => {
-    if (showLoading) setLoading(true);
-    fetchTastings().then(setTastings).catch((e: unknown) => setErrorMessage(asError(e))).finally(() => setLoading(false));
+  const finishSubmit = () => {
+    setSubmitStatus("saved");
+    formState.closeForm();
   };
 
   const handleSubmit = (mediaData: MediaData) => {
-    if (auth.status !== "signedIn") { setErrorMessage("Sign in to save."); return; }
+    if (auth.status !== "signedIn") {
+      ops.setError("Sign in to save.");
+      return;
+    }
     setSubmitStatus("saving");
-    setErrorMessage("");
-    const op = formState.formMode === "edit" && formState.editingId
-      ? performEdit(formState.editingId, formState.form, mediaData, auth.token)
-      : performCreate(buildCreatePayload(formState.form, mediaData), auth.token);
-    op.catch((e: unknown) => setErrorMessage(asError(e)))
-      .finally(() => setSubmitStatus("idle"));
+    ops.setError("");
+    const op =
+      formState.formMode === "edit" && formState.editingId
+        ? performEdit(formState.editingId, formState.form, mediaData)
+        : performCreate(buildCreatePayload(formState.form, mediaData));
+    op.catch((e: unknown) => ops.setError(asError(e))).finally(() =>
+      setSubmitStatus("idle"),
+    );
   };
 
-  const finishSubmit = () => { setSubmitStatus("saved"); formState.closeForm(); };
-
-  const performEdit = async (id: string, formData: FormState, mediaData: MediaData, token: string) => {
+  const performEdit = async (
+    id: string,
+    formData: FormState,
+    mediaData: MediaData,
+  ) => {
     const mediaPayload = buildMediaPayload(mediaData);
-    const updatedMedia = mediaPayload ? await updateTastingMedia(id, mediaPayload, token) : null;
-    updateTasting(id, (t) => buildEditedRecord(t, updatedMedia ?? t, formData));
+    const updatedMedia = mediaPayload
+      ? await updateTastingMedia(id, mediaPayload, auth.token)
+      : null;
+    ops.update(id, (t) => buildEditedRecord(t, updatedMedia ?? t, formData));
     finishSubmit();
   };
 
-  const performCreate = async (payload: CreateTastingInput, token: string) => {
-    await createTasting(payload, token);
-    loadTastings(true);
+  const performCreate = async (payload: CreateTastingInput) => {
+    await createTasting(payload, auth.token);
+    ops.reload(true);
     finishSubmit();
   };
 
   const handleRerun = (record: TastingRecord) => {
-    if (auth.status !== "signedIn") { setErrorMessage("Sign in to rerun."); return; }
-    setErrorMessage("");
+    if (auth.status !== "signedIn") {
+      ops.setError("Sign in to rerun.");
+      return;
+    }
+    ops.setError("");
     setRerunId(record.id);
     rerunTasting(record.id, auth.token)
       .then(() => {
-        updateTasting(record.id, (item) => ({ ...item, status: "pending", processingError: undefined }));
-        loadTastings(true);
+        ops.update(record.id, (item) => ({
+          ...item,
+          status: "pending",
+          processingError: undefined,
+        }));
+        ops.reload(true);
       })
-      .catch((e: unknown) => setErrorMessage(asError(e)))
+      .catch((e: unknown) => ops.setError(asError(e)))
       .finally(() => setRerunId(null));
   };
 
+  return { submitStatus, rerunId, handleSubmit, handleRerun };
+}
+
+function useDeletion(auth: AuthState, ops: TastingOps) {
+  const [deleteTarget, setDeleteTarget] = useState<TastingRecord | null>(null);
+  const [deleteStatus, setDeleteStatus] = useState<"idle" | "deleting">("idle");
+
   const openDeleteModal = (record: TastingRecord) => {
-    if (auth.status !== "signedIn") { setErrorMessage("Sign in to delete."); return; }
+    if (auth.status !== "signedIn") {
+      ops.setError("Sign in to delete.");
+      return;
+    }
     setDeleteTarget(record);
   };
 
-  const closeDeleteModal = () => { setDeleteTarget(null); setDeleteStatus("idle"); };
+  const closeDeleteModal = () => {
+    setDeleteTarget(null);
+    setDeleteStatus("idle");
+  };
 
   const confirmDelete = () => {
     if (!deleteTarget || auth.status !== "signedIn") return;
-    setErrorMessage("");
+    ops.setError("");
     setDeleteStatus("deleting");
     apiDeleteTasting(deleteTarget.id, auth.token)
-      .then(() => { removeTasting(deleteTarget.id); closeDeleteModal(); })
-      .catch((e: unknown) => { setErrorMessage(asError(e)); setDeleteStatus("idle"); });
+      .then(() => {
+        ops.remove(deleteTarget.id);
+        closeDeleteModal();
+      })
+      .catch((e: unknown) => {
+        ops.setError(asError(e));
+        setDeleteStatus("idle");
+      });
   };
 
   return {
-    tastings, loading, errorMessage, setErrorMessage, submitStatus, rerunId,
-    deleteTarget, deleteStatus, ...formState,
-    handleSubmit, handleRerun, openDeleteModal, closeDeleteModal, confirmDelete
+    deleteTarget,
+    deleteStatus,
+    openDeleteModal,
+    closeDeleteModal,
+    confirmDelete,
+  };
+}
+
+export function useTastings(auth: AuthState) {
+  const {
+    tastings,
+    setTastings,
+    loading,
+    setLoading,
+    errorMessage,
+    setErrorMessage,
+  } = useInitialFetch();
+  const formState = useFormState();
+  const ops = useTastingOps(setTastings, setLoading, setErrorMessage);
+  const submission = useSubmission(auth, formState, ops);
+  const deletion = useDeletion(auth, ops);
+
+  useEffect(() => {
+    if (auth.status === "signedOut") {
+      formState.closeForm();
+      formState.closeViewModal();
+    }
+  }, [auth.status]); // eslint-disable-line react-hooks/exhaustive-deps -- only react to auth changes
+
+  return {
+    tastings,
+    loading,
+    errorMessage,
+    setErrorMessage,
+    ...formState,
+    ...submission,
+    ...deletion,
   };
 }

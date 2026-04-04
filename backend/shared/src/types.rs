@@ -226,6 +226,8 @@ pub struct Recipe {
     pub notes: Option<String>,
     pub source: RecipeSource,
     pub source_meta: Option<sqlx::types::Json<serde_json::Value>>,
+    pub version: i32,
+    pub version_group_id: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -243,6 +245,8 @@ pub struct RecipeWithThumb {
     pub notes: Option<String>,
     pub source: RecipeSource,
     pub source_meta: Option<sqlx::types::Json<serde_json::Value>>,
+    pub version: i32,
+    pub version_group_id: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]

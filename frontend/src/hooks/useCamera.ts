@@ -16,14 +16,20 @@ const getStreamDimensions = (stream: MediaStream | null) => {
   return { width: settings?.width, height: settings?.height };
 };
 
-const getVideoDimensions = (video: HTMLVideoElement, stream: MediaStream | null) => {
+const getVideoDimensions = (
+  video: HTMLVideoElement,
+  stream: MediaStream | null,
+) => {
   const streamDims = getStreamDimensions(stream);
   const width = video.videoWidth || streamDims.width || 640;
   const height = video.videoHeight || streamDims.height || 480;
   return { width, height };
 };
 
-const captureFrame = (video: HTMLVideoElement, stream: MediaStream | null): string | null => {
+const captureFrame = (
+  video: HTMLVideoElement,
+  stream: MediaStream | null,
+): string | null => {
   const canvas = document.createElement("canvas");
   const { width, height } = getVideoDimensions(video, stream);
   canvas.width = width;
@@ -38,6 +44,27 @@ const captureFrame = (video: HTMLVideoElement, stream: MediaStream | null): stri
 
 export type CameraControls = ReturnType<typeof useCamera>[1];
 
+function useCameraStream(
+  videoRef: React.RefObject<HTMLVideoElement | null>,
+  stream: MediaStream | null,
+  active: boolean,
+  onError: (msg: string) => void,
+) {
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!stream || !active || !video) return;
+    video.srcObject = stream;
+    video.play().catch(() => onError("Unable to start camera preview."));
+    return () => {
+      if (video.srcObject === stream) video.srcObject = null;
+    };
+  }, [stream, active, onError, videoRef]);
+
+  useEffect(() => {
+    return () => stream?.getTracks().forEach((track) => track.stop());
+  }, [stream]);
+}
+
 export function useCamera(onError: (msg: string) => void) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [active, setActive] = useState(false);
@@ -46,27 +73,14 @@ export function useCamera(onError: (msg: string) => void) {
   const [base64, setBase64] = useState("");
   const [mimeType, setMimeType] = useState("");
 
-  // Attach stream to video element
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!stream || !active || !video) return;
-    video.srcObject = stream;
-    video.play().catch(() => {
-      onError("Unable to start camera preview.");
-    });
-    return () => {
-      if (video.srcObject === stream) {
-        video.srcObject = null;
-      }
-    };
-  }, [stream, active, onError]);
+  useCameraStream(videoRef, stream, active, onError);
 
-  // Cleanup stream on unmount
-  useEffect(() => {
-    return () => {
-      stream?.getTracks().forEach((track) => track.stop());
-    };
-  }, [stream]);
+  const stop = () => {
+    stream?.getTracks().forEach((track) => track.stop());
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setStream(null);
+    setActive(false);
+  };
 
   const start = () => {
     navigator.mediaDevices
@@ -75,27 +89,22 @@ export function useCamera(onError: (msg: string) => void) {
         setStream(mediaStream);
         setActive(true);
       })
-      .catch(() => {
-        onError("Camera access denied or unavailable.");
-      });
-  };
-
-  const stop = () => {
-    stream?.getTracks().forEach((track) => track.stop());
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setStream(null);
-    setActive(false);
+      .catch(() => onError("Camera access denied or unavailable."));
   };
 
   const capture = () => {
-    if (!videoRef.current) { onError("Camera preview is not ready."); return; }
+    if (!videoRef.current) {
+      onError("Camera preview is not ready.");
+      return;
+    }
     const video = videoRef.current;
     waitForVideoReady(video)
       .then(() => {
         const dataUrl = captureFrame(video, stream);
-        if (!dataUrl) { onError("Unable to capture photo. Try again."); return; }
+        if (!dataUrl) {
+          onError("Unable to capture photo. Try again.");
+          return;
+        }
         setPreview(dataUrl);
         setBase64(dataUrl);
         setMimeType("image/jpeg");
@@ -110,9 +119,18 @@ export function useCamera(onError: (msg: string) => void) {
     setMimeType("");
   };
 
-  const setExistingPreview = (url: string) => {
-    setPreview(url);
-  };
-
-  return [videoRef, { active, preview, base64, mimeType, start, stop, capture, clear, setExistingPreview }] as const;
+  return [
+    videoRef,
+    {
+      active,
+      preview,
+      base64,
+      mimeType,
+      start,
+      stop,
+      capture,
+      clear,
+      setExistingPreview: setPreview,
+    },
+  ] as const;
 }

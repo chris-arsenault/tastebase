@@ -30,8 +30,14 @@ export default tseslint.config(
     },
     rules: {
       complexity: ["error", 10],
-      "max-lines": ["error", { max: 400, skipBlankLines: true, skipComments: true }],
-      "max-lines-per-function": ["error", { max: 75, skipBlankLines: true, skipComments: true }],
+      "max-lines": [
+        "error",
+        { max: 400, skipBlankLines: true, skipComments: true },
+      ],
+      "max-lines-per-function": [
+        "error",
+        { max: 75, skipBlankLines: true, skipComments: true },
+      ],
       "max-depth": ["warn", 4],
     },
   },
@@ -75,12 +81,27 @@ export default tseslint.config(
       ...jsxA11y.configs.recommended.rules,
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true },
+      ],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_" },
+      ],
       "no-unused-vars": "off",
-      "react-perf/jsx-no-new-object-as-prop": ["warn", { nativeAllowList: "all" }],
-      "react-perf/jsx-no-new-array-as-prop": ["warn", { nativeAllowList: "all" }],
-      "react-perf/jsx-no-new-function-as-prop": ["warn", { nativeAllowList: "all" }],
+      "react-perf/jsx-no-new-object-as-prop": [
+        "warn",
+        { nativeAllowList: "all" },
+      ],
+      "react-perf/jsx-no-new-array-as-prop": [
+        "warn",
+        { nativeAllowList: "all" },
+      ],
+      "react-perf/jsx-no-new-function-as-prop": [
+        "warn",
+        { nativeAllowList: "all" },
+      ],
       "local/max-jsx-props": ["warn", { max: 12 }],
       "local/no-inline-styles": "error",
       "local/no-direct-fetch": "error",
@@ -92,5 +113,5 @@ export default tseslint.config(
 
   sonarjs.configs.recommended,
 
-  prettier
+  prettier,
 );

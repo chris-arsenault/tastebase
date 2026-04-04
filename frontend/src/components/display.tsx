@@ -9,7 +9,15 @@ const toFloat = (value: number | string, fallback: number) => {
 };
 
 // Compact Heat Slider (1-5 peppers)
-export const HeatSlider = ({ value, onChange, label }: { value: string; onChange: (val: string) => void; label?: string }) => {
+export const HeatSlider = ({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  label?: string;
+}) => {
   const numValue = value ? parseInt(value, 10) : 0;
   return (
     <div className="heat-slider">
@@ -20,14 +28,29 @@ export const HeatSlider = ({ value, onChange, label }: { value: string; onChange
           min="0"
           max="5"
           value={numValue}
-          onChange={(e) => onChange(e.target.value === "0" ? "" : e.target.value)}
+          onChange={(e) =>
+            onChange(e.target.value === "0" ? "" : e.target.value)
+          }
           className="range-input"
         />
-        {/* eslint-disable-next-line local/no-inline-styles -- CSS custom property for dynamic fill width */}
-        <div className="slider-fill heat-fill" style={{ '--fill-width': `${(numValue / 5) * 100}%` } as React.CSSProperties} />
+        {/* eslint-disable local/no-inline-styles -- CSS custom property for dynamic fill width */}
+        <div
+          className="slider-fill heat-fill"
+          style={
+            {
+              "--fill-width": `${(numValue / 5) * 100}%`,
+            } as React.CSSProperties
+          }
+        />
+        {/* eslint-enable local/no-inline-styles */}
         <div className="slider-peppers">
           {[1, 2, 3, 4, 5].map((level) => (
-            <span key={level} className={`slider-pepper ${numValue >= level ? "active" : ""}`}>{"\uD83C\uDF36\uFE0F"}</span>
+            <span
+              key={level}
+              className={`slider-pepper ${numValue >= level ? "active" : ""}`}
+            >
+              {"\uD83C\uDF36\uFE0F"}
+            </span>
           ))}
         </div>
       </div>
@@ -37,7 +60,15 @@ export const HeatSlider = ({ value, onChange, label }: { value: string; onChange
 };
 
 // Compact Score Slider (0-10)
-export const ScoreSlider = ({ value, onChange, label }: { value: string; onChange: (val: string) => void; label?: string }) => {
+export const ScoreSlider = ({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  label?: string;
+}) => {
   const numValue = value ? parseInt(value, 10) : 0;
   const hasValue = value !== "";
   return (
@@ -49,19 +80,41 @@ export const ScoreSlider = ({ value, onChange, label }: { value: string; onChang
           min="0"
           max="10"
           value={numValue}
-          onChange={(e) => onChange(e.target.value === "0" ? "" : e.target.value)}
+          onChange={(e) =>
+            onChange(e.target.value === "0" ? "" : e.target.value)
+          }
           className="range-input"
         />
-        {/* eslint-disable-next-line local/no-inline-styles -- CSS custom property for dynamic fill width */}
-        <div className="slider-fill score-fill" style={{ '--fill-width': `${(numValue / 10) * 100}%` } as React.CSSProperties} />
+        {/* eslint-disable local/no-inline-styles -- CSS custom property for dynamic fill width */}
+        <div
+          className="slider-fill score-fill"
+          style={
+            {
+              "--fill-width": `${(numValue / 10) * 100}%`,
+            } as React.CSSProperties
+          }
+        />
+        {/* eslint-enable local/no-inline-styles */}
       </div>
-      <span className="slider-value">{hasValue && numValue > 0 ? `${numValue}+` : "Any"}</span>
+      <span className="slider-value">
+        {hasValue && numValue > 0 ? `${numValue}+` : "Any"}
+      </span>
     </div>
   );
 };
 
 // Pepper Selector for forms (1-5 scale)
-export const PepperSelector = ({ value, onChange, label, showLabel = true }: { value: number | string; onChange: (val: string) => void; label?: string; showLabel?: boolean }) => {
+export const PepperSelector = ({
+  value,
+  onChange,
+  label,
+  showLabel = true,
+}: {
+  value: number | string;
+  onChange: (val: string) => void;
+  label?: string;
+  showLabel?: boolean;
+}) => {
   const numValue = toInt(value, 0);
   return (
     <div className="pepper-selector">
@@ -84,7 +137,17 @@ export const PepperSelector = ({ value, onChange, label, showLabel = true }: { v
 };
 
 // Score Selector for forms (0-10 scale)
-export const ScoreSelector = ({ value, onChange, label, showLabel = true }: { value: number | string; onChange: (val: string) => void; label?: string; showLabel?: boolean }) => {
+export const ScoreSelector = ({
+  value,
+  onChange,
+  label,
+  showLabel = true,
+}: {
+  value: number | string;
+  onChange: (val: string) => void;
+  label?: string;
+  showLabel?: boolean;
+}) => {
   const numValue = toFloat(value, -1);
   return (
     <div className="score-selector">
@@ -107,13 +170,24 @@ export const ScoreSelector = ({ value, onChange, label, showLabel = true }: { va
 };
 
 // Display peppers for heat level (read-only)
-export const HeatDisplay = ({ value, max = 5 }: { value: number | null; max?: number }) => {
+export const HeatDisplay = ({
+  value,
+  max = 5,
+}: {
+  value: number | null;
+  max?: number;
+}) => {
   if (value === null) return <span className="heat-empty">-</span>;
   const filled = Math.min(Math.round(value), max);
   return (
     <span className="heat-display">
       {Array.from({ length: max }, (_, i) => (
-        <span key={i} className={`pepper-icon ${i < filled ? "filled" : "empty"}`}>{"\uD83C\uDF36\uFE0F"}</span>
+        <span
+          key={i}
+          className={`pepper-icon ${i < filled ? "filled" : "empty"}`}
+        >
+          {"\uD83C\uDF36\uFE0F"}
+        </span>
       ))}
     </span>
   );
@@ -126,8 +200,12 @@ export const ScoreDisplay = ({ value }: { value: number | null }) => {
   return (
     <div className="score-display">
       <div className="score-bar">
-        {/* eslint-disable-next-line local/no-inline-styles -- CSS custom property for dynamic fill width */}
-        <div className="score-fill" style={{ '--fill-width': percentage } as React.CSSProperties} />
+        {/* eslint-disable local/no-inline-styles -- CSS custom property for dynamic fill width */}
+        <div
+          className="score-fill"
+          style={{ "--fill-width": percentage } as React.CSSProperties}
+        />
+        {/* eslint-enable local/no-inline-styles */}
       </div>
       <span className="score-value">{value.toFixed(1)}</span>
     </div>

@@ -4,7 +4,8 @@ import type { Filters, TastingRecord } from "../types";
 
 const getStoredProductType = () => {
   const stored = localStorage.getItem("productTypeFilter");
-  if (stored === "sauce" || stored === "drink" || stored === "all") return stored;
+  if (stored === "sauce" || stored === "drink" || stored === "all")
+    return stored;
   return "all";
 };
 
@@ -16,7 +17,7 @@ const defaultFilters: Filters = {
   minScore: "",
   minHeat: "",
   date: "",
-  sortBy: "date"
+  sortBy: "date",
 };
 
 type FilterPredicate = (item: TastingRecord) => boolean;
@@ -24,11 +25,15 @@ type FilterPredicate = (item: TastingRecord) => boolean;
 const buildFilterPredicates = (filters: Filters): FilterPredicate[] => {
   const predicates: FilterPredicate[] = [];
   if (filters.productType !== "all") {
-    predicates.push((item) => (item.productType ?? "sauce") === filters.productType);
+    predicates.push(
+      (item) => (item.productType ?? "sauce") === filters.productType,
+    );
   }
   const search = filters.search.trim().toLowerCase();
   if (search) {
-    predicates.push((item) => `${item.name} ${item.maker}`.toLowerCase().includes(search));
+    predicates.push((item) =>
+      `${item.name} ${item.maker}`.toLowerCase().includes(search),
+    );
   }
   const style = filters.style.trim().toLowerCase();
   if (style) {
@@ -48,23 +53,33 @@ const buildFilterPredicates = (filters: Filters): FilterPredicate[] => {
   return predicates;
 };
 
-const matchesAllFilters = (item: TastingRecord, predicates: FilterPredicate[]) =>
-  predicates.every((pred) => pred(item));
+const matchesAllFilters = (
+  item: TastingRecord,
+  predicates: FilterPredicate[],
+) => predicates.every((pred) => pred(item));
 
 const fuseSearch = (results: TastingRecord[], query: string) => {
   if (!query || results.length === 0) return results;
-  const fuse = new Fuse(results, { keys: ["ingredients"], threshold: 0.4, ignoreLocation: true, useExtendedSearch: true });
+  const fuse = new Fuse(results, {
+    keys: ["ingredients"],
+    threshold: 0.4,
+    ignoreLocation: true,
+    useExtendedSearch: true,
+  });
   return fuse.search(query).map((r) => r.item);
 };
 
 type SortKey = Filters["sortBy"];
 
-const comparators: Record<SortKey, (a: TastingRecord, b: TastingRecord) => number> = {
+const comparators: Record<
+  SortKey,
+  (a: TastingRecord, b: TastingRecord) => number
+> = {
   name: (a, b) => a.name.localeCompare(b.name),
   score: (a, b) => (b.score ?? -1) - (a.score ?? -1),
   style: (a, b) => a.style.localeCompare(b.style),
   heat: (a, b) => (b.heatUser ?? -1) - (a.heatUser ?? -1),
-  date: (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  date: (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
 };
 
 const applyFiltersAndSort = (tastings: TastingRecord[], filters: Filters) => {
@@ -81,9 +96,25 @@ export function useFilters(tastings: TastingRecord[]) {
     localStorage.setItem("productTypeFilter", filters.productType);
   }, [filters.productType]);
 
-  const filteredTastings = useMemo(() => applyFiltersAndSort(tastings, filters), [filters, tastings]);
-  const activeFilterCount = [filters.minScore, filters.minHeat, filters.style, filters.ingredient, filters.date].filter(Boolean).length;
+  const filteredTastings = useMemo(
+    () => applyFiltersAndSort(tastings, filters),
+    [filters, tastings],
+  );
+  const activeFilterCount = [
+    filters.minScore,
+    filters.minHeat,
+    filters.style,
+    filters.ingredient,
+    filters.date,
+  ].filter(Boolean).length;
   const resetFilters = () => setFilters(defaultFilters);
 
-  return { filters, setFilters, filteredTastings, activeFilterCount, resetFilters, defaultFilters };
+  return {
+    filters,
+    setFilters,
+    filteredTastings,
+    activeFilterCount,
+    resetFilters,
+    defaultFilters,
+  };
 }

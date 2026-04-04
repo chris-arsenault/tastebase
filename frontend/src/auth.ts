@@ -2,7 +2,7 @@ import {
   CognitoUserPool,
   CognitoUser,
   AuthenticationDetails,
-  CognitoUserSession
+  CognitoUserSession,
 } from "amazon-cognito-identity-js";
 import { config } from "./config";
 
@@ -12,7 +12,7 @@ const getUserPool = () => {
   }
   return new CognitoUserPool({
     UserPoolId: config.cognitoUserPoolId,
-    ClientId: config.cognitoClientId
+    ClientId: config.cognitoClientId,
   });
 };
 
@@ -24,21 +24,25 @@ const getCurrentUser = () => {
   }
 };
 
-export const signIn = (username: string, password: string): Promise<CognitoUserSession> => {
+export const signIn = (
+  username: string,
+  password: string,
+): Promise<CognitoUserSession> => {
   const authenticationDetails = new AuthenticationDetails({
     Username: username,
-    Password: password
+    Password: password,
   });
 
   const user = new CognitoUser({
     Username: username,
-    Pool: getUserPool()
+    Pool: getUserPool(),
   });
 
   return new Promise((resolve, reject) => {
     user.authenticateUser(authenticationDetails, {
       onSuccess: (session) => resolve(session),
-      onFailure: (error: unknown) => reject(error instanceof Error ? error : new Error(String(error)))
+      onFailure: (error: unknown) =>
+        reject(error instanceof Error ? error : new Error(String(error))),
     });
   });
 };
@@ -54,12 +58,14 @@ export const getSession = (): Promise<CognitoUserSession | null> => {
     return Promise.resolve(null);
   }
   return new Promise((resolve) => {
-    user.getSession((error: Error | null, session: CognitoUserSession | null) => {
-      if (error || !session) {
-        resolve(null);
-        return;
-      }
-      resolve(session);
-    });
+    user.getSession(
+      (error: Error | null, session: CognitoUserSession | null) => {
+        if (error || !session) {
+          resolve(null);
+          return;
+        }
+        resolve(session);
+      },
+    );
   });
 };

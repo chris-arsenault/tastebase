@@ -7,28 +7,28 @@
 
 :root {
   /* === FIRE PALETTE === */
-  --flame-red: #D62828;
-  --ember: #E85D04;
-  --blaze: #F77F00;
-  --gold: #FCBF49;
-  --spark: #FFE066;
+  --flame-red: #d62828;
+  --ember: #e85d04;
+  --blaze: #f77f00;
+  --gold: #fcbf49;
+  --spark: #ffe066;
 
   /* === SMOKY NEUTRALS === */
-  --char: #1A1A1A;
-  --smoke: #2D1B0E;
-  --ash: #4A3F35;
-  --soot: #6B5B4F;
+  --char: #1a1a1a;
+  --smoke: #2d1b0e;
+  --ash: #4a3f35;
+  --soot: #6b5b4f;
 
   /* === PAPER & PARCHMENT === */
-  --parchment: #F5E6D3;
-  --aged-paper: #E8D5B7;
-  --cream: #FEF9EF;
-  --worn: #D4C4A8;
+  --parchment: #f5e6d3;
+  --aged-paper: #e8d5b7;
+  --cream: #fef9ef;
+  --worn: #d4c4a8;
 
   /* === ACCENT POPS === */
-  --fresh-green: #7CB518;
+  --fresh-green: #7cb518;
   --jalapeño: #588157;
-  --warning: #9D0208;
+  --warning: #9d0208;
 
   /* === EFFECTS === */
   --shadow-warm: rgba(45, 27, 14, 0.25);
@@ -46,7 +46,11 @@
 
 body {
   margin: 0;
-  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    "DM Sans",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   color: var(--char);
   background-color: var(--parchment);
   /* Aged paper texture effect with warm gradient */
@@ -61,7 +65,11 @@ body {
     ),
     /* Warm corner glow */
     radial-gradient(ellipse at 0% 0%, rgba(252, 191, 73, 0.15), transparent 50%),
-    radial-gradient(ellipse at 100% 100%, rgba(214, 40, 40, 0.08), transparent 50%),
+    radial-gradient(
+      ellipse at 100% 100%,
+      rgba(214, 40, 40, 0.08),
+      transparent 50%
+    ),
     /* Base aged paper feel */
     linear-gradient(180deg, var(--parchment) 0%, var(--aged-paper) 100%);
   min-height: 100vh;
@@ -73,7 +81,10 @@ body {
 }
 
 /* === TYPOGRAPHY === */
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   font-family: "Bebas Neue", Impact, sans-serif;
   letter-spacing: 0.02em;
   line-height: 1.1;
@@ -115,7 +126,12 @@ button::before {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
   transition: left 0.4s ease;
 }
 
@@ -148,7 +164,9 @@ select {
   padding: 0.6rem 0.85rem;
   background: var(--cream);
   font-size: 0.95rem;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 input:focus,
@@ -213,18 +231,33 @@ label {
 }
 
 @keyframes flicker {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.85; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
 }
 
 @keyframes heat-wave {
-  0%, 100% { transform: translateY(0) scaleY(1); }
-  50% { transform: translateY(-2px) scaleY(1.02); }
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+  50% {
+    transform: translateY(-2px) scaleY(1.02);
+  }
 }
 
 @keyframes burn-glow {
-  0%, 100% { box-shadow: 0 0 20px var(--shadow-fire); }
-  50% { box-shadow: 0 0 30px var(--glow-ember); }
+  0%,
+  100% {
+    box-shadow: 0 0 20px var(--shadow-fire);
+  }
+  50% {
+    box-shadow: 0 0 30px var(--glow-ember);
+  }
 }
 
 /* === DECORATIVE BORDERS (reusable) === */
@@ -267,7 +300,13 @@ label {
 
 /* === FIRE TEXT EFFECT === */
 .fire-text {
-  background: linear-gradient(180deg, var(--spark) 0%, var(--gold) 25%, var(--blaze) 50%, var(--flame-red) 100%);
+  background: linear-gradient(
+    180deg,
+    var(--spark) 0%,
+    var(--gold) 25%,
+    var(--blaze) 50%,
+    var(--flame-red) 100%
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

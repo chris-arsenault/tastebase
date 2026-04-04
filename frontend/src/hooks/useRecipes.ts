@@ -10,10 +10,18 @@ export function useRecipes() {
   useEffect(() => {
     let stale = false;
     fetchRecipes()
-      .then((data) => { if (!stale) setRecipes(data); })
-      .catch((e: unknown) => { if (!stale) setError((e as Error).message); })
-      .finally(() => { if (!stale) setLoading(false); });
-    return () => { stale = true; };
+      .then((data) => {
+        if (!stale) setRecipes(data);
+      })
+      .catch((e: unknown) => {
+        if (!stale) setError((e as Error).message);
+      })
+      .finally(() => {
+        if (!stale) setLoading(false);
+      });
+    return () => {
+      stale = true;
+    };
   }, []);
 
   const reload = () => {

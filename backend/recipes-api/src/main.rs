@@ -14,6 +14,9 @@ async fn list_recipes(State(state): State<AppState>) -> Result<Json<serde_json::
     let rows: Vec<RecipeWithThumb> = sqlx::query_as(
         "SELECT r.*, ri.image_url AS thumbnail_url, rv.score AS latest_score
          FROM recipes r
+         INNER JOIN (
+           SELECT version_group_id, MAX(version) AS max_v FROM recipes GROUP BY version_group_id
+         ) latest ON r.version_group_id = latest.version_group_id AND r.version = latest.max_v
          LEFT JOIN LATERAL (
            SELECT image_url FROM recipe_images WHERE recipe_id = r.id ORDER BY created_at DESC LIMIT 1
          ) ri ON true
@@ -132,8 +135,8 @@ async fn create_recipe(
     let mut tx = state.db.begin().await?;
 
     sqlx::query(
-        "INSERT INTO recipes (id, title, description, base_servings, notes, source, source_meta, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)",
+        "INSERT INTO recipes (id, title, description, base_servings, notes, source, source_meta, version, version_group_id, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $1, $8, $8)",
     )
     .bind(recipe_id)
     .bind(&title)

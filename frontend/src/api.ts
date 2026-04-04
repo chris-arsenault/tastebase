@@ -1,5 +1,11 @@
 import { config } from "./config";
-import type { CreateTastingInput, Recipe, RecipeFull, TastingRecord, UpdateTastingMediaInput } from "./types";
+import type {
+  CreateTastingInput,
+  Recipe,
+  RecipeFull,
+  TastingRecord,
+  UpdateTastingMediaInput,
+} from "./types";
 
 export const fetchTastings = async (): Promise<TastingRecord[]> => {
   const response = await fetch(`${config.apiBaseUrl}/tastings`);
@@ -10,18 +16,23 @@ export const fetchTastings = async (): Promise<TastingRecord[]> => {
   return payload.data ?? [];
 };
 
-export const createTasting = async (payload: CreateTastingInput, token: string): Promise<TastingRecord | null> => {
+export const createTasting = async (
+  payload: CreateTastingInput,
+  token: string,
+): Promise<TastingRecord | null> => {
   const response = await fetch(`${config.apiBaseUrl}/tastings`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as { message?: string };
+    const errorBody = (await response.json().catch(() => ({}))) as {
+      message?: string;
+    };
     throw new Error(errorBody.message ?? "Failed to create tasting");
   }
 
@@ -33,15 +44,20 @@ export const createTasting = async (payload: CreateTastingInput, token: string):
   return responseBody.data ?? null;
 };
 
-export const rerunTasting = async (id: string, token: string): Promise<void> => {
+export const rerunTasting = async (
+  id: string,
+  token: string,
+): Promise<void> => {
   const response = await fetch(`${config.apiBaseUrl}/tastings/${id}/rerun`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`
-    }
+      Authorization: `Bearer ${token}`,
+    },
   });
   if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as { message?: string };
+    const errorBody = (await response.json().catch(() => ({}))) as {
+      message?: string;
+    };
     throw new Error(errorBody.message ?? "Failed to rerun pipeline");
   }
 };
@@ -49,19 +65,21 @@ export const rerunTasting = async (id: string, token: string): Promise<void> => 
 export const updateTastingMedia = async (
   id: string,
   payload: UpdateTastingMediaInput,
-  token: string
+  token: string,
 ): Promise<TastingRecord | null> => {
   const response = await fetch(`${config.apiBaseUrl}/tastings/${id}/media`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as { message?: string };
+    const errorBody = (await response.json().catch(() => ({}))) as {
+      message?: string;
+    };
     throw new Error(errorBody.message ?? "Failed to update media");
   }
 
@@ -69,15 +87,20 @@ export const updateTastingMedia = async (
   return responseBody.data ?? null;
 };
 
-export const deleteTasting = async (id: string, token: string): Promise<void> => {
+export const deleteTasting = async (
+  id: string,
+  token: string,
+): Promise<void> => {
   const response = await fetch(`${config.apiBaseUrl}/tastings/${id}`, {
     method: "DELETE",
     headers: {
-      Authorization: `Bearer ${token}`
-    }
+      Authorization: `Bearer ${token}`,
+    },
   });
   if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as { message?: string };
+    const errorBody = (await response.json().catch(() => ({}))) as {
+      message?: string;
+    };
     throw new Error(errorBody.message ?? "Failed to delete tasting");
   }
 };
@@ -105,69 +128,128 @@ export const fetchRecipe = async (id: string): Promise<RecipeFull> => {
 type UploadUrlResponse = { uploadUrl: string; key: string; publicUrl: string };
 
 const getUploadUrl = async (
-  recipeId: string, token: string, contentType: string, uploadType: string
+  recipeId: string,
+  token: string,
+  contentType: string,
+  uploadType: string,
 ): Promise<UploadUrlResponse> => {
-  const resp = await fetch(`${config.apiBaseUrl}/recipes/${recipeId}/upload-url`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ contentType, uploadType })
-  });
+  const resp = await fetch(
+    `${config.apiBaseUrl}/recipes/${recipeId}/upload-url`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ contentType, uploadType }),
+    },
+  );
   if (!resp.ok) throw new Error("Failed to get upload URL");
   return resp.json() as Promise<UploadUrlResponse>;
 };
 
-export const uploadRecipeImage = async (recipeId: string, token: string, file: File): Promise<void> => {
-  const { uploadUrl, key, publicUrl } = await getUploadUrl(recipeId, token, file.type, "image");
-  const put = await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-  if (!put.ok) throw new Error("Failed to upload file");
-  const confirm = await fetch(`${config.apiBaseUrl}/recipes/${recipeId}/image`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ key, publicUrl })
+export const uploadRecipeImage = async (
+  recipeId: string,
+  token: string,
+  file: File,
+): Promise<void> => {
+  const { uploadUrl, key, publicUrl } = await getUploadUrl(
+    recipeId,
+    token,
+    file.type,
+    "image",
+  );
+  const put = await fetch(uploadUrl, {
+    method: "PUT",
+    body: file,
+    headers: { "Content-Type": file.type },
   });
+  if (!put.ok) throw new Error("Failed to upload file");
+  const confirm = await fetch(
+    `${config.apiBaseUrl}/recipes/${recipeId}/image`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ key, publicUrl }),
+    },
+  );
   if (!confirm.ok) throw new Error("Failed to confirm image");
 };
 
-export const submitVoiceReview = async (recipeId: string, token: string, blob: Blob, mimeType: string): Promise<void> => {
-  const { uploadUrl, key } = await getUploadUrl(recipeId, token, mimeType, "voice");
-  const put = await fetch(uploadUrl, { method: "PUT", body: blob, headers: { "Content-Type": mimeType } });
-  if (!put.ok) throw new Error("Failed to upload audio");
-  const confirm = await fetch(`${config.apiBaseUrl}/recipes/${recipeId}/voice-review`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ key, mimeType })
+export const submitVoiceReview = async (
+  recipeId: string,
+  token: string,
+  blob: Blob,
+  mimeType: string,
+): Promise<void> => {
+  const { uploadUrl, key } = await getUploadUrl(
+    recipeId,
+    token,
+    mimeType,
+    "voice",
+  );
+  const put = await fetch(uploadUrl, {
+    method: "PUT",
+    body: blob,
+    headers: { "Content-Type": mimeType },
   });
+  if (!put.ok) throw new Error("Failed to upload audio");
+  const confirm = await fetch(
+    `${config.apiBaseUrl}/recipes/${recipeId}/voice-review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ key, mimeType }),
+    },
+  );
   if (!confirm.ok) throw new Error("Failed to submit review");
 };
 
 export const rerunReview = async (id: string, token: string): Promise<void> => {
   const resp = await fetch(`${config.apiBaseUrl}/recipes/reviews/${id}/rerun`, {
-    method: "POST", headers: { Authorization: `Bearer ${token}` }
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
   });
   if (!resp.ok) throw new Error("Failed to rerun review");
 };
 
-export const deleteReview = async (id: string, token: string): Promise<void> => {
+export const deleteReview = async (
+  id: string,
+  token: string,
+): Promise<void> => {
   const resp = await fetch(`${config.apiBaseUrl}/recipes/reviews/${id}`, {
-    method: "DELETE", headers: { Authorization: `Bearer ${token}` }
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
   });
   if (!resp.ok) throw new Error("Failed to delete review");
 };
 
 export const deleteImage = async (id: string, token: string): Promise<void> => {
   const resp = await fetch(`${config.apiBaseUrl}/recipes/images/${id}`, {
-    method: "DELETE", headers: { Authorization: `Bearer ${token}` }
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
   });
   if (!resp.ok) throw new Error("Failed to delete image");
 };
 
-export const deleteRecipe = async (id: string, token: string): Promise<void> => {
+export const deleteRecipe = async (
+  id: string,
+  token: string,
+): Promise<void> => {
   const response = await fetch(`${config.apiBaseUrl}/recipes/${id}`, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` }
+    headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as { message?: string };
+    const errorBody = (await response.json().catch(() => ({}))) as {
+      message?: string;
+    };
     throw new Error(errorBody.message ?? "Failed to delete recipe");
   }
 };

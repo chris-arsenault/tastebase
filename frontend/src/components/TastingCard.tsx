@@ -20,7 +20,7 @@ const statusLabels: Record<string, string> = {
   voice_extracted: "Extracting scores",
   notes_formatted: "Formatting notes",
   complete: "Complete",
-  error: "Error"
+  error: "Error",
 };
 
 const formatStatus = (status?: string) => {
@@ -30,24 +30,39 @@ const formatStatus = (status?: string) => {
 
 const resolveType = (item: TastingRecord) => item.productType ?? "sauce";
 const isDrink = (item: TastingRecord) => resolveType(item) === "drink";
-const typeEmoji = (item: TastingRecord) => isDrink(item) ? "\uD83E\uDD64" : "\uD83C\uDF36\uFE0F";
+const typeEmoji = (item: TastingRecord) =>
+  isDrink(item) ? "\uD83E\uDD64" : "\uD83C\uDF36\uFE0F";
 const hasMediaKeys = (item: TastingRecord) =>
   Boolean(item.imageKey || item.ingredientsImageKey || item.nutritionImageKey);
 
-function CardImage({ item, productTypeFilter, onView }: Readonly<{
+function CardImage({
+  item,
+  productTypeFilter,
+  onView,
+}: Readonly<{
   item: TastingRecord;
   productTypeFilter: string;
   onView: () => void;
 }>) {
   return (
-    <div className="card-image" role="button" tabIndex={0} onClick={onView} onKeyDown={(e) => { if (e.key === "Enter") onView(); }}>
+    <div
+      className="card-image"
+      role="button"
+      tabIndex={0}
+      onClick={onView}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onView();
+      }}
+    >
       {item.imageUrl ? (
         <img src={item.imageUrl} alt={item.name} loading="lazy" />
       ) : (
         <div className="card-image-empty">{typeEmoji(item)}</div>
       )}
       {productTypeFilter === "all" && (
-        <span className={`card-badge ${isDrink(item) ? "badge-drink" : "badge-sauce"}`}>
+        <span
+          className={`card-badge ${isDrink(item) ? "badge-drink" : "badge-sauce"}`}
+        >
           {typeEmoji(item)}
         </span>
       )}
@@ -62,7 +77,9 @@ function CardMeta({ item }: Readonly<{ item: TastingRecord }>) {
       {item.style && <span className="card-tag">{item.style}</span>}
       {item.date && <span className="card-date">{formatDate(item.date)}</span>}
       {item.status && item.status !== "complete" && (
-        <span className={`card-status ${item.status === "error" ? "status-error" : ""}`}>
+        <span
+          className={`card-status ${item.status === "error" ? "status-error" : ""}`}
+        >
           {formatStatus(item.status)}
         </span>
       )}
@@ -70,7 +87,15 @@ function CardMeta({ item }: Readonly<{ item: TastingRecord }>) {
   );
 }
 
-function CardFooter({ item, auth, rerunId, onView, onEdit, onRerun, onDelete }: Readonly<{
+function CardFooter({
+  item,
+  auth,
+  rerunId,
+  onView,
+  onEdit,
+  onRerun,
+  onDelete,
+}: Readonly<{
   item: TastingRecord;
   auth: AuthState;
   rerunId: string | null;
@@ -81,16 +106,26 @@ function CardFooter({ item, auth, rerunId, onView, onEdit, onRerun, onDelete }: 
 }>) {
   return (
     <footer className="card-footer">
-      <button className="card-view-btn" onClick={onView}>View Details</button>
+      <button className="card-view-btn" onClick={onView}>
+        View Details
+      </button>
       {auth.status === "signedIn" && (
         <div className="card-actions">
-          <button onClick={onEdit} title="Edit">Edit</button>
+          <button onClick={onEdit} title="Edit">
+            Edit
+          </button>
           {hasMediaKeys(item) && (
-            <button onClick={onRerun} disabled={rerunId === item.id} title="Rerun AI">
+            <button
+              onClick={onRerun}
+              disabled={rerunId === item.id}
+              title="Rerun AI"
+            >
               {rerunId === item.id ? "..." : "\u21BB"}
             </button>
           )}
-          <button className="card-delete" onClick={onDelete} title="Delete">\u00D7</button>
+          <button className="card-delete" onClick={onDelete} title="Delete">
+            \u00D7
+          </button>
         </div>
       )}
     </footer>
@@ -108,10 +143,25 @@ type TastingCardProps = {
   onDelete: () => void;
 };
 
-export function TastingCard({ item, auth, productTypeFilter, rerunId, onView, onEdit, onRerun, onDelete }: Readonly<TastingCardProps>) {
+export function TastingCard({
+  item,
+  auth,
+  productTypeFilter,
+  rerunId,
+  onView,
+  onEdit,
+  onRerun,
+  onDelete,
+}: Readonly<TastingCardProps>) {
   return (
-    <article className={`card ${item.needsAttention ? "needs-attention" : ""} ${isDrink(item) ? "card-drink" : "card-sauce"}`}>
-      <CardImage item={item} productTypeFilter={productTypeFilter} onView={onView} />
+    <article
+      className={`card ${item.needsAttention ? "needs-attention" : ""} ${isDrink(item) ? "card-drink" : "card-sauce"}`}
+    >
+      <CardImage
+        item={item}
+        productTypeFilter={productTypeFilter}
+        onView={onView}
+      />
       <div className="card-content">
         <header className="card-header">
           <h3>{item.name || "Untitled"}</h3>
@@ -122,13 +172,23 @@ export function TastingCard({ item, auth, productTypeFilter, rerunId, onView, on
           {!isDrink(item) && <HeatDisplay value={item.heatUser} />}
         </div>
         <CardMeta item={item} />
-        {item.tastingNotesUser && <p className="card-notes">{item.tastingNotesUser}</p>}
+        {item.tastingNotesUser && (
+          <p className="card-notes">{item.tastingNotesUser}</p>
+        )}
         {item.status === "error" && item.processingError && (
           <div className="card-error">
             <span>Error:</span> {item.processingError}
           </div>
         )}
-        <CardFooter item={item} auth={auth} rerunId={rerunId} onView={onView} onEdit={onEdit} onRerun={onRerun} onDelete={onDelete} />
+        <CardFooter
+          item={item}
+          auth={auth}
+          rerunId={rerunId}
+          onView={onView}
+          onEdit={onEdit}
+          onRerun={onRerun}
+          onDelete={onDelete}
+        />
       </div>
     </article>
   );

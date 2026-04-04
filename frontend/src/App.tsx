@@ -19,19 +19,19 @@ type AppSection = "tastings" | "recipes";
 const searchPlaceholders: Record<string, string> = {
   drink: "Search drinks...",
   all: "Search...",
-  sauce: "Search sauces..."
+  sauce: "Search sauces...",
 };
 
 const itemLabels: Record<string, string> = {
   drink: "drink",
   all: "item",
-  sauce: "sauce"
+  sauce: "sauce",
 };
 
 const themeClass: Record<string, string> = {
   drink: "theme-drink",
   sauce: "theme-sauce",
-  all: "theme-sauce"
+  all: "theme-sauce",
 };
 
 function slugify(title: string): string {
@@ -61,7 +61,13 @@ function parsePath(): RouteState {
   return { section: "tastings", recipeSlug: null };
 }
 
-function ContentArea({ tastings, filteredTastings, itemLabel, auth, filters }: Readonly<{
+function ContentArea({
+  tastings,
+  filteredTastings,
+  itemLabel,
+  auth,
+  filters,
+}: Readonly<{
   tastings: ReturnType<typeof useTastings>;
   filteredTastings: ReturnType<typeof useFilters>["filteredTastings"];
   itemLabel: string;
@@ -72,9 +78,10 @@ function ContentArea({ tastings, filteredTastings, itemLabel, auth, filters }: R
     return <div className="loading">Loading your collection...</div>;
   }
   if (filteredTastings.length === 0) {
-    const message = tastings.tastings.length === 0
-      ? `No ${itemLabel}s yet. Add your first tasting!`
-      : `No ${itemLabel}s match your filters.`;
+    const message =
+      tastings.tastings.length === 0
+        ? `No ${itemLabel}s yet. Add your first tasting!`
+        : `No ${itemLabel}s match your filters.`;
     return (
       <div className="empty-state">
         <span className="empty-icon">{"\uD83C\uDF36\uFE0F"}</span>
@@ -103,7 +110,50 @@ function ContentArea({ tastings, filteredTastings, itemLabel, auth, filters }: R
   );
 }
 
-function TastingsSection({ tastings, filters, setFilters, filteredTastings, activeFilterCount, resetFilters, auth }: Readonly<{
+function TastingFormWrapper({
+  tastings,
+  filters,
+}: Readonly<{
+  tastings: ReturnType<typeof useTastings>;
+  filters: ReturnType<typeof useFilters>["filters"];
+}>) {
+  const manualFields = useMemo(
+    () => ({
+      value: tastings.showManualFields,
+      set: tastings.setShowManualFields,
+    }),
+    [tastings.showManualFields, tastings.setShowManualFields],
+  );
+  const mediaExpanded = useMemo(
+    () => ({ value: tastings.mediaExpanded, set: tastings.setMediaExpanded }),
+    [tastings.mediaExpanded, tastings.setMediaExpanded],
+  );
+  return (
+    <TastingForm
+      formMode={tastings.formMode}
+      form={tastings.form}
+      setForm={tastings.setForm}
+      manualFields={manualFields}
+      mediaExpanded={mediaExpanded}
+      submitStatus={tastings.submitStatus}
+      viewingRecord={tastings.viewingRecord}
+      productType={filters.productType}
+      onSubmit={tastings.handleSubmit}
+      onClose={tastings.closeForm}
+      onError={tastings.setErrorMessage}
+    />
+  );
+}
+
+function TastingsSection({
+  tastings,
+  filters,
+  setFilters,
+  filteredTastings,
+  activeFilterCount,
+  resetFilters,
+  auth,
+}: Readonly<{
   tastings: ReturnType<typeof useTastings>;
   filters: ReturnType<typeof useFilters>["filters"];
   setFilters: ReturnType<typeof useFilters>["setFilters"];
@@ -112,10 +162,9 @@ function TastingsSection({ tastings, filters, setFilters, filteredTastings, acti
   resetFilters: () => void;
   auth: ReturnType<typeof useAuth>["auth"];
 }>) {
-  const searchPlaceholder = searchPlaceholders[filters.productType] ?? "Search...";
+  const searchPlaceholder =
+    searchPlaceholders[filters.productType] ?? "Search...";
   const itemLabel = itemLabels[filters.productType] ?? "item";
-  const manualFields = useMemo(() => ({ value: tastings.showManualFields, set: tastings.setShowManualFields }), [tastings.showManualFields, tastings.setShowManualFields]);
-  const mediaExpanded = useMemo(() => ({ value: tastings.mediaExpanded, set: tastings.setMediaExpanded }), [tastings.mediaExpanded, tastings.setMediaExpanded]);
 
   return (
     <>
@@ -126,36 +175,33 @@ function TastingsSection({ tastings, filters, setFilters, filteredTastings, acti
         searchPlaceholder={searchPlaceholder}
         onReset={resetFilters}
       />
-
-      {tastings.errorMessage && <div className="error-banner">{tastings.errorMessage}</div>}
-
+      {tastings.errorMessage && (
+        <div className="error-banner">{tastings.errorMessage}</div>
+      )}
       {tastings.formOpen && (
-        <TastingForm
-          formMode={tastings.formMode}
-          form={tastings.form}
-          setForm={tastings.setForm}
-          manualFields={manualFields}
-          mediaExpanded={mediaExpanded}
-          submitStatus={tastings.submitStatus}
-          viewingRecord={tastings.viewingRecord}
-          productType={filters.productType}
-          onSubmit={tastings.handleSubmit}
-          onClose={tastings.closeForm}
-          onError={tastings.setErrorMessage}
+        <TastingFormWrapper tastings={tastings} filters={filters} />
+      )}
+      {tastings.viewOpen && tastings.viewingRecord && (
+        <ViewModal
+          record={tastings.viewingRecord}
+          onClose={tastings.closeViewModal}
         />
       )}
-
-      {tastings.viewOpen && tastings.viewingRecord && (
-        <ViewModal record={tastings.viewingRecord} onClose={tastings.closeViewModal} />
-      )}
-
       <main className="content">
         <div className="content-header">
-          <span className="content-count">{filteredTastings.length} {filteredTastings.length === 1 ? itemLabel : `${itemLabel}s`}</span>
+          <span className="content-count">
+            {filteredTastings.length}{" "}
+            {filteredTastings.length === 1 ? itemLabel : `${itemLabel}s`}
+          </span>
         </div>
-        <ContentArea tastings={tastings} filteredTastings={filteredTastings} itemLabel={itemLabel} auth={auth} filters={filters} />
+        <ContentArea
+          tastings={tastings}
+          filteredTastings={filteredTastings}
+          itemLabel={itemLabel}
+          auth={auth}
+          filters={filters}
+        />
       </main>
-
       {tastings.deleteTarget && (
         <DeleteModal
           target={tastings.deleteTarget}
@@ -168,14 +214,20 @@ function TastingsSection({ tastings, filters, setFilters, filteredTastings, acti
   );
 }
 
-function RecipesSection({ recipesHook, onSelect }: Readonly<{
+function RecipesSection({
+  recipesHook,
+  onSelect,
+}: Readonly<{
   recipesHook: ReturnType<typeof useRecipes>;
   onSelect: (recipe: Recipe) => void;
 }>) {
   return (
     <main className="content">
       <div className="content-header">
-        <span className="content-count">{recipesHook.recipes.length} recipe{recipesHook.recipes.length !== 1 ? "s" : ""}</span>
+        <span className="content-count">
+          {recipesHook.recipes.length} recipe
+          {recipesHook.recipes.length !== 1 ? "s" : ""}
+        </span>
       </div>
       <RecipeList
         recipes={recipesHook.recipes}
@@ -218,17 +270,53 @@ function useRouter(recipes: Recipe[]) {
     return recipes.find((r) => slugify(r.title) === route.recipeSlug) ?? null;
   }, [route.recipeSlug, recipes]);
 
-  return { section: route.section, selectedRecipe, setSection, handleSelectRecipe, handleBackToRecipes };
+  return {
+    section: route.section,
+    selectedRecipe,
+    setSection,
+    handleSelectRecipe,
+    handleBackToRecipes,
+  };
+}
+
+function AppFooter() {
+  return (
+    <footer className="app-footer">
+      <span>Copyright &copy; 2025</span>
+      <a href="https://ahara.io" target="_blank" rel="noreferrer">
+        <img src="/tsonu-combined.png" alt="tsonu" height="14" />
+      </a>
+    </footer>
+  );
 }
 
 const App = () => {
-  const { auth, menuOpen, setMenuOpen, handleSignIn, handleSignOut } = useAuth();
+  const { auth, menuOpen, setMenuOpen, handleSignIn, handleSignOut } =
+    useAuth();
   const tastings = useTastings(auth);
-  const { filters, setFilters, filteredTastings, activeFilterCount, resetFilters } = useFilters(tastings.tastings);
+  const {
+    filters,
+    setFilters,
+    filteredTastings,
+    activeFilterCount,
+    resetFilters,
+  } = useFilters(tastings.tastings);
   const recipesHook = useRecipes();
-  const { section, selectedRecipe, setSection, handleSelectRecipe, handleBackToRecipes } = useRouter(recipesHook.recipes);
-  const menu = useMemo(() => ({ open: menuOpen, setOpen: setMenuOpen }), [menuOpen, setMenuOpen]);
-  const handleRecipeDeleted = useCallback(() => { recipesHook.reload(); handleBackToRecipes(); }, [recipesHook, handleBackToRecipes]);
+  const {
+    section,
+    selectedRecipe,
+    setSection,
+    handleSelectRecipe,
+    handleBackToRecipes,
+  } = useRouter(recipesHook.recipes);
+  const menu = useMemo(
+    () => ({ open: menuOpen, setOpen: setMenuOpen }),
+    [menuOpen, setMenuOpen],
+  );
+  const handleRecipeDeleted = useCallback(() => {
+    recipesHook.reload();
+    handleBackToRecipes();
+  }, [recipesHook, handleBackToRecipes]);
 
   return (
     <div className={`app ${themeClass[filters.productType] ?? "theme-sauce"}`}>
@@ -246,7 +334,6 @@ const App = () => {
         onSignOut={handleSignOut}
         onError={tastings.setErrorMessage}
       />
-
       {section === "tastings" && (
         <TastingsSection
           tastings={tastings}
@@ -258,11 +345,12 @@ const App = () => {
           auth={auth}
         />
       )}
-
       {section === "recipes" && !selectedRecipe && (
-        <RecipesSection recipesHook={recipesHook} onSelect={handleSelectRecipe} />
+        <RecipesSection
+          recipesHook={recipesHook}
+          onSelect={handleSelectRecipe}
+        />
       )}
-
       {section === "recipes" && selectedRecipe && (
         <RecipeDetail
           key={selectedRecipe.id}
@@ -272,13 +360,7 @@ const App = () => {
           onDeleted={handleRecipeDeleted}
         />
       )}
-
-      <footer className="app-footer">
-        <span>Copyright &copy; 2025</span>
-        <a href="https://ahara.io" target="_blank" rel="noreferrer">
-          <img src="/tsonu-combined.png" alt="tsonu" height="14" />
-        </a>
-      </footer>
+      <AppFooter />
     </div>
   );
 };

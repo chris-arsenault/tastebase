@@ -8,7 +8,11 @@ const formatDate = (value: string) => {
   return date.toLocaleDateString();
 };
 
-function HeroSection({ record, productType, onClose }: Readonly<{
+function HeroSection({
+  record,
+  productType,
+  onClose,
+}: Readonly<{
   record: TastingRecord;
   productType: string;
   onClose: () => void;
@@ -16,18 +20,29 @@ function HeroSection({ record, productType, onClose }: Readonly<{
   return (
     <div className="view-hero-section">
       {record.imageUrl ? (
-        <img className="view-hero-img" src={record.imageUrl} alt={record.name || "Tasting"} />
+        <img
+          className="view-hero-img"
+          src={record.imageUrl}
+          alt={record.name || "Tasting"}
+        />
       ) : (
         <div className="view-hero-empty">
-          <span>{productType === "drink" ? "\uD83E\uDD64" : "\uD83C\uDF36\uFE0F"}</span>
+          <span>
+            {productType === "drink" ? "\uD83E\uDD64" : "\uD83C\uDF36\uFE0F"}
+          </span>
         </div>
       )}
-      <button type="button" className="view-close" onClick={onClose}>{"\u00D7"}</button>
+      <button type="button" className="view-close" onClick={onClose}>
+        {"\u00D7"}
+      </button>
     </div>
   );
 }
 
-function HeaderInfo({ record, productType }: Readonly<{ record: TastingRecord; productType: string }>) {
+function HeaderInfo({
+  record,
+  productType,
+}: Readonly<{ record: TastingRecord; productType: string }>) {
   return (
     <header className="view-header-info">
       <div className="view-title-group">
@@ -48,18 +63,28 @@ function HeaderInfo({ record, productType }: Readonly<{ record: TastingRecord; p
   );
 }
 
-function QuickInfo({ record, productType }: Readonly<{ record: TastingRecord; productType: string }>) {
+function QuickInfo({
+  record,
+  productType,
+}: Readonly<{ record: TastingRecord; productType: string }>) {
   return (
     <div className="view-quick-info">
       {record.style && <span className="view-tag">{record.style}</span>}
-      {record.date && <span className="view-date">{formatDate(record.date)}</span>}
+      {record.date && (
+        <span className="view-date">{formatDate(record.date)}</span>
+      )}
       {productType !== "drink" && record.heatVendor !== null && (
         <span className="view-vendor-heat">
           Vendor: <HeatDisplay value={record.heatVendor} />
         </span>
       )}
       {record.productUrl && (
-        <a className="view-product-link" href={record.productUrl} target="_blank" rel="noreferrer">
+        <a
+          className="view-product-link"
+          href={record.productUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
           Product Page {"\u2192"}
         </a>
       )}
@@ -87,17 +112,49 @@ function NotesSection({ record }: Readonly<{ record: TastingRecord }>) {
   );
 }
 
-function NutritionDetails({ nutritionFacts }: Readonly<{ nutritionFacts: NutritionFacts }>) {
+function NutritionDetails({
+  nutritionFacts,
+}: Readonly<{ nutritionFacts: NutritionFacts }>) {
   return (
     <details className="view-details-block" open>
       <summary>Nutrition Facts</summary>
       <dl className="view-nutrition">
-        {nutritionFacts.servingSize && <><dt>Serving</dt><dd>{nutritionFacts.servingSize}</dd></>}
-        {nutritionFacts.calories !== undefined && <><dt>Calories</dt><dd>{nutritionFacts.calories}</dd></>}
-        {nutritionFacts.sodium && <><dt>Sodium</dt><dd>{nutritionFacts.sodium}</dd></>}
-        {nutritionFacts.totalCarbs && <><dt>Carbs</dt><dd>{nutritionFacts.totalCarbs}</dd></>}
-        {nutritionFacts.sugars && <><dt>Sugars</dt><dd>{nutritionFacts.sugars}</dd></>}
-        {nutritionFacts.protein && <><dt>Protein</dt><dd>{nutritionFacts.protein}</dd></>}
+        {nutritionFacts.servingSize && (
+          <>
+            <dt>Serving</dt>
+            <dd>{nutritionFacts.servingSize}</dd>
+          </>
+        )}
+        {nutritionFacts.calories !== undefined && (
+          <>
+            <dt>Calories</dt>
+            <dd>{nutritionFacts.calories}</dd>
+          </>
+        )}
+        {nutritionFacts.sodium && (
+          <>
+            <dt>Sodium</dt>
+            <dd>{nutritionFacts.sodium}</dd>
+          </>
+        )}
+        {nutritionFacts.totalCarbs && (
+          <>
+            <dt>Carbs</dt>
+            <dd>{nutritionFacts.totalCarbs}</dd>
+          </>
+        )}
+        {nutritionFacts.sugars && (
+          <>
+            <dt>Sugars</dt>
+            <dd>{nutritionFacts.sugars}</dd>
+          </>
+        )}
+        {nutritionFacts.protein && (
+          <>
+            <dt>Protein</dt>
+            <dd>{nutritionFacts.protein}</dd>
+          </>
+        )}
       </dl>
     </details>
   );
@@ -118,7 +175,9 @@ function ExtractedData({ record }: Readonly<{ record: TastingRecord }>) {
           </div>
         </details>
       )}
-      {record.nutritionFacts && <NutritionDetails nutritionFacts={record.nutritionFacts} />}
+      {record.nutritionFacts && (
+        <NutritionDetails nutritionFacts={record.nutritionFacts} />
+      )}
     </div>
   );
 }
@@ -157,7 +216,11 @@ export function ViewModal({ record, onClose }: Readonly<ViewModalProps>) {
   return (
     <div className="view-overlay">
       <article className="view-modal" role="dialog" aria-modal="true">
-        <HeroSection record={record} productType={productType} onClose={onClose} />
+        <HeroSection
+          record={record}
+          productType={productType}
+          onClose={onClose}
+        />
         <div className="view-content">
           <HeaderInfo record={record} productType={productType} />
           <QuickInfo record={record} productType={productType} />

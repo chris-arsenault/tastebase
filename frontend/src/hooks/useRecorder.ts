@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from "react";
 const fileToBase64 = (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+    reader.onload = () =>
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("FileReader failed"));
     reader.readAsDataURL(blob);
   });
 };
@@ -26,7 +28,11 @@ export function useRecorder(onError: (msg: string) => void) {
     };
   }, [audioStream]);
 
-  const onRecordingDone = (chunks: Blob[], mimeType: string, stream: MediaStream) => {
+  const onRecordingDone = (
+    chunks: Blob[],
+    mimeType: string,
+    stream: MediaStream,
+  ) => {
     const blob = new Blob(chunks, { type: mimeType });
     setAudioBlob(blob);
     setAudioMimeType(mimeType || "audio/webm");
@@ -47,7 +53,8 @@ export function useRecorder(onError: (msg: string) => void) {
         recorder.ondataavailable = (event) => {
           if (event.data.size > 0) chunks.push(event.data);
         };
-        recorder.onstop = () => onRecordingDone(chunks, recorder.mimeType, stream);
+        recorder.onstop = () =>
+          onRecordingDone(chunks, recorder.mimeType, stream);
         recorder.start();
         recorderRef.current = recorder;
         setAudioStream(stream);
@@ -70,5 +77,14 @@ export function useRecorder(onError: (msg: string) => void) {
     setAudioMimeType("");
   };
 
-  return { isRecording, audioUrl, audioBase64, audioBlob, audioMimeType, start, stop, clear };
+  return {
+    isRecording,
+    audioUrl,
+    audioBase64,
+    audioBlob,
+    audioMimeType,
+    start,
+    stop,
+    clear,
+  };
 }

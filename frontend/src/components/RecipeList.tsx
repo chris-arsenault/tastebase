@@ -3,7 +3,7 @@ import type { Recipe } from "../types";
 const sourceLabels: Record<string, string> = {
   claude: "Recipe by Claude",
   manual: "Manual",
-  import: "Imported"
+  import: "Imported",
 };
 
 const formatDate = (value: string) => {
@@ -20,7 +20,12 @@ type RecipeListProps = {
   onSelect: (recipe: Recipe) => void;
 };
 
-export function RecipeList({ recipes, loading, error, onSelect }: Readonly<RecipeListProps>) {
+export function RecipeList({
+  recipes,
+  loading,
+  error,
+  onSelect,
+}: Readonly<RecipeListProps>) {
   if (loading) {
     return <div className="loading">Loading recipes...</div>;
   }
@@ -49,22 +54,32 @@ export function RecipeList({ recipes, loading, error, onSelect }: Readonly<Recip
         >
           <div className="recipe-card-image">
             {recipe.thumbnailUrl ? (
-              <img src={recipe.thumbnailUrl} alt={recipe.title} loading="lazy" />
+              <img
+                src={recipe.thumbnailUrl}
+                alt={recipe.title}
+                loading="lazy"
+              />
             ) : (
               <div className="recipe-card-image-empty">{"\uD83D\uDCD6"}</div>
             )}
           </div>
           <div className="recipe-card-content">
-            <span className="recipe-card-source">{sourceLabels[recipe.source] ?? recipe.source}</span>
+            <span className="recipe-card-source">
+              {sourceLabels[recipe.source] ?? recipe.source}
+            </span>
             <h3>{recipe.title}</h3>
             {recipe.description && (
               <p className="recipe-card-description">{recipe.description}</p>
             )}
             <div className="recipe-card-meta">
               <span className="recipe-card-score">
-                {recipe.latestScore != null ? `${recipe.latestScore}/10` : "Unreviewed"}
+                {recipe.latestScore != null
+                  ? `${recipe.latestScore}/10`
+                  : "Unreviewed"}
               </span>
-              <span className="recipe-card-date">{formatDate(recipe.createdAt)}</span>
+              <span className="recipe-card-date">
+                {formatDate(recipe.createdAt)}
+              </span>
             </div>
           </div>
         </button>
