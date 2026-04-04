@@ -71,3 +71,7 @@ Follows `~/src/platform/INTEGRATION.md`. Registered in platform-control and plat
 - S3 for media blobs (presigned upload URLs), PostgreSQL for structured data
 - OG Lambda generates HTML with per-recipe OpenGraph tags; CloudFront caches at edge
 - Path-based routing (not hash) for crawler compatibility
+
+## Pre-commit CI check
+
+**Run `make ci` before committing any change.** This runs the same lint, format, typecheck, and test steps as GitHub Actions. Do not commit if it fails.
