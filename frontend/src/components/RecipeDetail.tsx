@@ -119,7 +119,7 @@ function LinkedIngredientRow({ ing, scale, cache }: Readonly<{
   const timerRef = useRef<number>(0);
   const linkedId = ing.linkedRecipeId!;
 
-  const startHover = useCallback(() => {
+  const startHover = () => {
     if (!fetchStarted && !cache.current.has(linkedId)) {
       setFetchStarted(true);
       fetchRecipe(linkedId).then((data) => {
@@ -128,16 +128,16 @@ function LinkedIngredientRow({ ing, scale, cache }: Readonly<{
       }).catch(() => {});
     }
     timerRef.current = window.setTimeout(() => setShowTooltip(true), 200);
-  }, [linkedId, cache, fetchStarted]);
+  };
 
-  const endHover = useCallback(() => {
+  const endHover = () => {
     clearTimeout(timerRef.current);
     setShowTooltip(false);
-  }, []);
+  };
 
   useEffect(() => () => clearTimeout(timerRef.current), []);
 
-  const handleClick = useCallback(() => {
+  const handleClick = () => {
     const cached = cache.current.get(linkedId);
     if (cached) {
       navigateToRecipe(slugify(cached.title));
@@ -147,7 +147,7 @@ function LinkedIngredientRow({ ing, scale, cache }: Readonly<{
       cache.current.set(linkedId, data);
       navigateToRecipe(slugify(data.title));
     }).catch(() => {});
-  }, [linkedId, cache]);
+  };
 
   const thumbUrl = preview?.images?.[0]?.imageUrl;
 
