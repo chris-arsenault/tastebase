@@ -2528,7 +2528,7 @@
 
 .recipe-page-hero-img {
   width: 100%;
-  aspect-ratio: 3 / 2;
+  max-height: 400px;
   object-fit: cover;
   display: block;
 }

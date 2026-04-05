@@ -21,7 +21,8 @@ type RecipeDetailProps = {
 };
 
 function RecipeHero({ recipe }: Readonly<{ recipe: RecipeFull | null }>) {
-  const heroUrl = recipe?.images?.[0]?.imageUrl;
+  const images = recipe?.images;
+  const heroUrl = images?.length ? images[images.length - 1].imageUrl : null;
   return (
     <div className="recipe-page-hero">
       {heroUrl ? (

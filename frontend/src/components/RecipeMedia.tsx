@@ -52,7 +52,7 @@ export function RecipeImages({
   token: string;
   onDeleted: () => void;
 }>) {
-  const extras = images.slice(1); // first image is the hero/cover
+  const extras = images.slice(0, -1); // last image is the hero/cover
   if (extras.length === 0) return null;
   const handleDelete = (id: string) => {
     if (!token) return;
