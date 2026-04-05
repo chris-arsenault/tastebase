@@ -41,7 +41,7 @@ locals {
   }
 
   # Extract hashed entry files from Vite build output
-  frontend_js  = one([for f in fileset(local.frontend_dir, "assets/*.js") : f])
+  frontend_js  = one([for f in fileset(local.frontend_dir, "assets/index-*.js") : f])
   frontend_css = one([for f in fileset(local.frontend_dir, "assets/*.css") : f])
 }
 
