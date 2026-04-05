@@ -157,6 +157,7 @@ export function resolveTokens(
             key={match.index}
             href={cached ? `/recipes/${slugify(cached.title)}` : "#"}
             className="recipe-ingredient-token recipe-ingredient-token-linked"
+            data-linked-id={linkedId}
             onClick={(e) => {
               e.preventDefault();
               navigateToLinkedRecipe(linkedId, linkedRecipeCache);
@@ -182,7 +183,9 @@ export function resolveTokens(
   return result;
 }
 
-function LinkedTooltip({ preview }: Readonly<{ preview: RecipeFull | null }>) {
+export function LinkedTooltip({
+  preview,
+}: Readonly<{ preview: RecipeFull | null }>) {
   const thumbUrl = preview?.images?.[0]?.imageUrl;
   if (!preview) {
     return <span className="recipe-linked-tooltip-loading">{"\u2026"}</span>;
@@ -219,32 +222,25 @@ export function LinkedIngredientRow({
   cache: React.MutableRefObject<Map<string, RecipeFull>>;
 }>) {
   const linkedId = ing.linkedRecipeId!;
-  const [preview, setPreview] = useState<RecipeFull | null>(
-    () => cache.current.get(linkedId) ?? null,
-  );
 
   useEffect(() => {
-    if (preview || cache.current.has(linkedId)) return;
-    let stale = false;
+    if (cache.current.has(linkedId)) return;
     fetchRecipe(linkedId)
-      .then((data) => {
-        cache.current.set(linkedId, data);
-        if (!stale) setPreview(data);
-      })
+      .then((data) => cache.current.set(linkedId, data))
       .catch(() => {});
-    return () => {
-      stale = true;
-    };
-  }, [linkedId, preview, cache]);
+  }, [linkedId, cache]);
+
+  const cached = cache.current.get(linkedId);
 
   return (
-    <li className="recipe-ing-linked-row">
+    <li>
       <span className="recipe-ing-amount">
         {formatAmount(ing.amount * scale)} {ing.unit}
       </span>
       <a
-        href={preview ? `/recipes/${slugify(preview.title)}` : "#"}
+        href={cached ? `/recipes/${slugify(cached.title)}` : "#"}
         className="recipe-ing-linked"
+        data-linked-id={linkedId}
         onClick={(e) => {
           e.preventDefault();
           navigateToLinkedRecipe(linkedId, cache);
@@ -255,9 +251,6 @@ export function LinkedIngredientRow({
           {"\u2197"}
         </span>
       </a>
-      <div className="recipe-linked-tooltip">
-        <LinkedTooltip preview={preview} />
-      </div>
     </li>
   );
 }

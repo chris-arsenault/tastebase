@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { deleteRecipe } from "../api";
 import { RecipeImages, RecipeReviews, ReviewCapture } from "./RecipeMedia";
 import type { RecipeFull } from "../types";
@@ -11,6 +11,7 @@ import {
   buildIngredientMap,
   resolveTokens,
   LinkedIngredientRow,
+  LinkedTooltip,
 } from "./RecipeDetailHelpers";
 
 type RecipeDetailProps = {
@@ -161,6 +162,54 @@ function RecipeSteps({
   );
 }
 
+type TooltipData = { preview: RecipeFull | null; x: number; y: number };
+
+function useLinkedTooltip(
+  cache: React.MutableRefObject<Map<string, RecipeFull>>,
+) {
+  const [tooltip, setTooltip] = useState<TooltipData | null>(null);
+  const show = useCallback(
+    (target: EventTarget) => {
+      const el = (target as HTMLElement).closest<HTMLElement>(
+        "[data-linked-id]",
+      );
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setTooltip({
+        preview: cache.current.get(el.dataset.linkedId!) ?? null,
+        x: rect.left + rect.width / 2,
+        y: rect.bottom,
+      });
+    },
+    [cache],
+  );
+  const hide = useCallback(
+    (target: EventTarget, related: EventTarget | null) => {
+      const from = (target as HTMLElement).closest("[data-linked-id]");
+      if (!from) return;
+      if (related && from.contains(related as Node)) return;
+      setTooltip(null);
+    },
+    [],
+  );
+  return { tooltip, show, hide };
+}
+
+function FixedTooltip({ data }: Readonly<{ data: TooltipData }>) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.setProperty("--tooltip-left", `${data.x}px`);
+    el.style.setProperty("--tooltip-top", `${data.y + 8}px`);
+  }, [data.x, data.y]);
+  return (
+    <div ref={ref} className="recipe-linked-tooltip">
+      <LinkedTooltip preview={data.preview} />
+    </div>
+  );
+}
+
 function RecipeBody({
   recipe,
   token,
@@ -173,8 +222,15 @@ function RecipeBody({
   const [servings, setServings] = useState(recipe.baseServings);
   const scale = servings / recipe.baseServings;
   const linkedRecipeCache = useRef(new Map<string, RecipeFull>());
+  const { tooltip, show, hide } = useLinkedTooltip(linkedRecipeCache);
+
   return (
-    <>
+    <div
+      onMouseOver={(e) => show(e.target)}
+      onMouseOut={(e) => hide(e.target, e.relatedTarget)}
+      onFocus={(e) => show(e.target)}
+      onBlur={(e) => hide(e.target, e.relatedTarget)}
+    >
       <RecipeHeader
         recipe={recipe}
         servings={servings}
@@ -213,7 +269,8 @@ function RecipeBody({
           onSubmitted={onReviewSubmitted}
         />
       )}
-    </>
+      {tooltip && <FixedTooltip data={tooltip} />}
+    </div>
   );
 }
 
