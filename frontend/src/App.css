@@ -2703,7 +2703,7 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   padding: 0.6rem;
   gap: 0.6rem;
-  max-width: 300px;
+  max-width: min(300px, calc(100% - 60px));
   min-width: 200px;
   pointer-events: none;
 }

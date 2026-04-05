@@ -151,15 +151,19 @@ export function resolveTokens(
     if (info) {
       if (info.linkedRecipeId) {
         const linkedId = info.linkedRecipeId;
+        const cached = linkedRecipeCache.current.get(linkedId);
         result.push(
-          <button
+          <a
             key={match.index}
-            type="button"
+            href={cached ? `/recipes/${slugify(cached.title)}` : "#"}
             className="recipe-ingredient-token recipe-ingredient-token-linked"
-            onClick={() => navigateToLinkedRecipe(linkedId, linkedRecipeCache)}
+            onClick={(e) => {
+              e.preventDefault();
+              navigateToLinkedRecipe(linkedId, linkedRecipeCache);
+            }}
           >
             {info.name}
-          </button>,
+          </a>,
         );
       } else {
         result.push(
@@ -238,16 +242,19 @@ export function LinkedIngredientRow({
       <span className="recipe-ing-amount">
         {formatAmount(ing.amount * scale)} {ing.unit}
       </span>
-      <button
-        type="button"
+      <a
+        href={preview ? `/recipes/${slugify(preview.title)}` : "#"}
         className="recipe-ing-linked"
-        onClick={() => navigateToLinkedRecipe(linkedId, cache)}
+        onClick={(e) => {
+          e.preventDefault();
+          navigateToLinkedRecipe(linkedId, cache);
+        }}
       >
         {ing.name}
         <span className="recipe-ing-linked-icon" aria-hidden="true">
           {"\u2197"}
         </span>
-      </button>
+      </a>
       <div className="recipe-linked-tooltip">
         <LinkedTooltip preview={preview} />
       </div>
