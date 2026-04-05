@@ -1,3 +1,7 @@
 project: tastebase
 prefix: tastebase
 migrations: db/migrations
+stack:
+  - rust
+  - typescript
+  - terraform
