@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchRecipe } from "../api";
 import type { RecipeFull, RecipeIngredient } from "../types";
 
@@ -214,46 +214,27 @@ export function LinkedIngredientRow({
   scale: number;
   cache: React.MutableRefObject<Map<string, RecipeFull>>;
 }>) {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [preview, setPreview] = useState<RecipeFull | null>(
-    () => cache.current.get(ing.linkedRecipeId!) ?? null,
-  );
-  const [fetchStarted, setFetchStarted] = useState(false);
-  const timerRef = useRef<number>(0);
-  const hoveringRef = useRef(false);
   const linkedId = ing.linkedRecipeId!;
+  const [preview, setPreview] = useState<RecipeFull | null>(
+    () => cache.current.get(linkedId) ?? null,
+  );
 
-  const startHover = () => {
-    hoveringRef.current = true;
-    clearTimeout(timerRef.current);
-    if (!fetchStarted && !cache.current.has(linkedId)) {
-      setFetchStarted(true);
-      fetchRecipe(linkedId)
-        .then((data) => {
-          cache.current.set(linkedId, data);
-          if (hoveringRef.current) setPreview(data);
-        })
-        .catch(() => {});
-    }
-    timerRef.current = window.setTimeout(() => {
-      if (hoveringRef.current) setShowTooltip(true);
-    }, 200);
-  };
-
-  const endHover = () => {
-    hoveringRef.current = false;
-    clearTimeout(timerRef.current);
-    setShowTooltip(false);
-  };
-
-  useEffect(() => () => clearTimeout(timerRef.current), []);
+  useEffect(() => {
+    if (preview || cache.current.has(linkedId)) return;
+    let stale = false;
+    fetchRecipe(linkedId)
+      .then((data) => {
+        cache.current.set(linkedId, data);
+        if (!stale) setPreview(data);
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [linkedId, preview, cache]);
 
   return (
-    <li
-      className="recipe-ing-linked-row"
-      onMouseEnter={startHover}
-      onMouseLeave={endHover}
-    >
+    <li className="recipe-ing-linked-row">
       <span className="recipe-ing-amount">
         {formatAmount(ing.amount * scale)} {ing.unit}
       </span>
@@ -267,11 +248,9 @@ export function LinkedIngredientRow({
           {"\u2197"}
         </span>
       </button>
-      {showTooltip && (
-        <div className="recipe-linked-tooltip">
-          <LinkedTooltip preview={preview} />
-        </div>
-      )}
+      <div className="recipe-linked-tooltip">
+        <LinkedTooltip preview={preview} />
+      </div>
     </li>
   );
 }
