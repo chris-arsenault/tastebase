@@ -192,9 +192,11 @@ export function LinkedTooltip({
   }
   return (
     <>
-      {thumbUrl && (
-        <img className="recipe-linked-tooltip-thumb" src={thumbUrl} alt="" />
-      )}
+      <div className="recipe-linked-tooltip-thumb-slot">
+        {thumbUrl && (
+          <img className="recipe-linked-tooltip-thumb" src={thumbUrl} alt="" />
+        )}
+      </div>
       <div className="recipe-linked-tooltip-info">
         <span className="recipe-linked-tooltip-title">{preview.title}</span>
         {preview.description && (
