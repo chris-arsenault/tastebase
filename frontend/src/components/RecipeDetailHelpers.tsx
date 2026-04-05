@@ -220,22 +220,28 @@ export function LinkedIngredientRow({
   );
   const [fetchStarted, setFetchStarted] = useState(false);
   const timerRef = useRef<number>(0);
+  const hoveringRef = useRef(false);
   const linkedId = ing.linkedRecipeId!;
 
   const startHover = () => {
+    hoveringRef.current = true;
+    clearTimeout(timerRef.current);
     if (!fetchStarted && !cache.current.has(linkedId)) {
       setFetchStarted(true);
       fetchRecipe(linkedId)
         .then((data) => {
           cache.current.set(linkedId, data);
-          setPreview(data);
+          if (hoveringRef.current) setPreview(data);
         })
         .catch(() => {});
     }
-    timerRef.current = window.setTimeout(() => setShowTooltip(true), 200);
+    timerRef.current = window.setTimeout(() => {
+      if (hoveringRef.current) setShowTooltip(true);
+    }, 200);
   };
 
   const endHover = () => {
+    hoveringRef.current = false;
     clearTimeout(timerRef.current);
     setShowTooltip(false);
   };

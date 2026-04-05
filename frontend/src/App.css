@@ -2710,7 +2710,6 @@
     gap: 0.6rem;
     max-width: 300px;
     min-width: 200px;
-    pointer-events: none;
     animation: tooltip-fade-in 0.15s ease;
   }
 }
