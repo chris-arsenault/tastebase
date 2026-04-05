@@ -162,7 +162,12 @@ function RecipeSteps({
   );
 }
 
-type TooltipData = { preview: RecipeFull | null; x: number; y: number };
+type TooltipData = {
+  linkedId: string;
+  preview: RecipeFull | null;
+  x: number;
+  y: number;
+};
 
 function useLinkedTooltip(
   cache: React.MutableRefObject<Map<string, RecipeFull>>,
@@ -174,11 +179,16 @@ function useLinkedTooltip(
         "[data-linked-id]",
       );
       if (!el) return;
-      const rect = el.getBoundingClientRect();
-      setTooltip({
-        preview: cache.current.get(el.dataset.linkedId!) ?? null,
-        x: rect.left + rect.width / 2,
-        y: rect.bottom,
+      const linkedId = el.dataset.linkedId!;
+      setTooltip((prev) => {
+        if (prev?.linkedId === linkedId) return prev;
+        const rect = el.getBoundingClientRect();
+        return {
+          linkedId,
+          preview: cache.current.get(linkedId) ?? null,
+          x: rect.left + rect.width / 2,
+          y: rect.bottom,
+        };
       });
     },
     [cache],
