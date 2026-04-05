@@ -5,28 +5,33 @@ locals {
   frontend_dir    = "${path.module}/../../frontend/dist"
 
   # Exclude index.html — the OG Lambda generates HTML dynamically
+  # Exclude config.js — uploaded separately with runtime values
+  # Exclude sw.js + manifest.webmanifest — need no-cache for PWA update detection
+  pwa_no_cache_files = toset(["config.js", "index.html", "sw.js", "manifest.webmanifest"])
+
   site_files = {
     for file in fileset(local.frontend_dir, "**") :
     file => file
-    if file != "config.js" && file != "index.html"
+    if !contains(local.pwa_no_cache_files, file)
   }
 
   mime_types = {
-    ".html"  = "text/html"
-    ".css"   = "text/css"
-    ".js"    = "application/javascript"
-    ".json"  = "application/json"
-    ".svg"   = "image/svg+xml"
-    ".png"   = "image/png"
-    ".jpg"   = "image/jpeg"
-    ".jpeg"  = "image/jpeg"
-    ".gif"   = "image/gif"
-    ".ico"   = "image/x-icon"
-    ".xml"   = "application/xml"
-    ".txt"   = "text/plain"
-    ".woff"  = "font/woff"
-    ".woff2" = "font/woff2"
-    ".ttf"   = "font/ttf"
+    ".html"        = "text/html"
+    ".css"         = "text/css"
+    ".js"          = "application/javascript"
+    ".json"        = "application/json"
+    ".svg"         = "image/svg+xml"
+    ".png"         = "image/png"
+    ".jpg"         = "image/jpeg"
+    ".jpeg"        = "image/jpeg"
+    ".gif"         = "image/gif"
+    ".ico"         = "image/x-icon"
+    ".xml"         = "application/xml"
+    ".txt"         = "text/plain"
+    ".woff"        = "font/woff"
+    ".woff2"       = "font/woff2"
+    ".ttf"         = "font/ttf"
+    ".webmanifest" = "application/manifest+json"
   }
 
   runtime_config = {
@@ -97,6 +102,25 @@ resource "aws_s3_object" "frontend_files" {
   source_hash   = filemd5("${local.frontend_dir}/${each.key}")
   content_type  = local.mime_types[regex("\\.[^.]+$", each.key)]
   cache_control = "public, max-age=31536000, immutable"
+}
+
+# PWA service worker + manifest — must not be cached for update detection
+resource "aws_s3_object" "pwa_sw" {
+  bucket        = aws_s3_bucket.frontend.id
+  key           = "sw.js"
+  source        = "${local.frontend_dir}/sw.js"
+  source_hash   = filemd5("${local.frontend_dir}/sw.js")
+  content_type  = "application/javascript"
+  cache_control = "no-cache"
+}
+
+resource "aws_s3_object" "pwa_manifest" {
+  bucket        = aws_s3_bucket.frontend.id
+  key           = "manifest.webmanifest"
+  source        = "${local.frontend_dir}/manifest.webmanifest"
+  source_hash   = filemd5("${local.frontend_dir}/manifest.webmanifest")
+  content_type  = "application/manifest+json"
+  cache_control = "no-cache"
 }
 
 # Runtime config
@@ -280,6 +304,63 @@ resource "aws_cloudfront_distribution" "frontend" {
     max_ttl     = 604800
   }
 
+  # Service worker — must revalidate every time for PWA updates
+  ordered_cache_behavior {
+    path_pattern           = "/sw.js"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "S3-${local.prefix}-frontend"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+  }
+
+  # PWA manifest — short cache, needs to stay fresh
+  ordered_cache_behavior {
+    path_pattern           = "/manifest.webmanifest"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "S3-${local.prefix}-frontend"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 300
+  }
+
+  # Workbox runtime — hashed filename, immutable
+  ordered_cache_behavior {
+    path_pattern           = "/workbox-*.js"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "S3-${local.prefix}-frontend"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 31536000
+    default_ttl = 31536000
+    max_ttl     = 31536000
+  }
+
   # Default: OG Lambda generates HTML with dynamic meta tags
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
@@ -378,6 +459,8 @@ resource "terraform_data" "frontend_deployment" {
     runtime_config = local.runtime_config
     entry_js       = local.frontend_js
     entry_css      = local.frontend_css
+    sw_hash        = aws_s3_object.pwa_sw.source_hash
+    manifest_hash  = aws_s3_object.pwa_manifest.source_hash
   }))
 
   lifecycle {
