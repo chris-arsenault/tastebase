@@ -1,43 +1,18 @@
-# Security group for Lambda functions (RDS access)
-resource "aws_security_group" "lambda" {
-  name_prefix = "${local.prefix}-lambda-"
-  description = "Tastebase Lambda functions"
-  vpc_id      = data.aws_ssm_parameter.vpc_id.value
+# ── Platform context ────────────────────────────────────────
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+module "ctx" {
+  source = "git::https://github.com/chris-arsenault/ahara-tf-patterns.git//modules/platform-context"
 }
 
-data "aws_ssm_parameter" "vpc_id" {
-  name = "/platform/network/vpc-id"
-}
+# ── ALB APIs ────────────────────────────────────────────────
 
-# IAM role shared by all Lambdas
-resource "aws_iam_role" "lambda" {
-  name = "${local.prefix}-lambda"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action    = "sts:AssumeRole"
-      Effect    = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
-    }]
-  })
-}
+module "api" {
+  source   = "git::https://github.com/chris-arsenault/ahara-tf-patterns.git//modules/alb-api"
+  hostname = local.api_hostname
 
-resource "aws_iam_role_policy_attachment" "lambda_vpc" {
-  role       = aws_iam_role.lambda.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
-}
+  environment = local.common_env
 
-resource "aws_iam_role_policy" "lambda" {
-  name = "${local.prefix}-lambda"
-  role = aws_iam_role.lambda.id
-  policy = jsonencode({
+  iam_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -61,7 +36,7 @@ resource "aws_iam_role_policy" "lambda" {
       {
         Effect   = "Allow"
         Action   = ["lambda:InvokeFunction"]
-        Resource = aws_lambda_function.processing.arn
+        Resource = module.processing.function_arn
       },
       {
         Effect   = "Allow"
@@ -70,135 +45,48 @@ resource "aws_iam_role_policy" "lambda" {
       }
     ]
   })
-}
 
-# --- Archive: zip each cargo-lambda binary for deployment ---
-
-data "archive_file" "tastings_api" {
-  type        = "zip"
-  source_file = "${path.module}/../../backend/target/lambda/tastings-api/bootstrap"
-  output_path = "${path.module}/../../backend/target/lambda/tastings-api/bootstrap.zip"
-}
-
-data "archive_file" "recipes_api" {
-  type        = "zip"
-  source_file = "${path.module}/../../backend/target/lambda/recipes-api/bootstrap"
-  output_path = "${path.module}/../../backend/target/lambda/recipes-api/bootstrap.zip"
-}
-
-data "archive_file" "mcp_server" {
-  type        = "zip"
-  source_file = "${path.module}/../../backend/target/lambda/mcp-server/bootstrap"
-  output_path = "${path.module}/../../backend/target/lambda/mcp-server/bootstrap.zip"
-}
-
-data "archive_file" "processing" {
-  type        = "zip"
-  source_file = "${path.module}/../../backend/target/lambda/processing/bootstrap"
-  output_path = "${path.module}/../../backend/target/lambda/processing/bootstrap.zip"
-}
-
-# --- Tastings API ---
-
-resource "aws_lambda_function" "tastings_api" {
-  function_name = "${local.prefix}-tastings-api"
-  role          = aws_iam_role.lambda.arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  architectures = ["x86_64"]
-  timeout       = 30
-  memory_size   = 256
-
-  filename         = data.archive_file.tastings_api.output_path
-  source_code_hash = data.archive_file.tastings_api.output_base64sha256
-
-  vpc_config {
-    subnet_ids         = local.lambda_subnet_ids
-    security_group_ids = [aws_security_group.lambda.id]
-  }
-
-  environment {
-    variables = merge(local.common_env, {
-      PROCESSING_FUNCTION_NAME = aws_lambda_function.processing.function_name
-    })
+  lambdas = {
+    tastings-api = {
+      zip = "${path.module}/../../backend/target/lambda/tastings-api/bootstrap.zip"
+      routes = [
+        { priority = 210, paths = ["/tastings", "/tastings/*"], methods = ["GET", "HEAD"], authenticated = false },
+        { priority = 211, paths = ["/tastings", "/tastings/*"], authenticated = true },
+      ]
+      environment = { PROCESSING_FUNCTION_NAME = module.processing.function_name }
+    }
+    recipes-api = {
+      zip = "${path.module}/../../backend/target/lambda/recipes-api/bootstrap.zip"
+      routes = [
+        { priority = 212, paths = ["/recipes", "/recipes/*"], methods = ["GET", "HEAD"], authenticated = false },
+        { priority = 213, paths = ["/recipes", "/recipes/*"], authenticated = true },
+      ]
+      environment = {
+        PROCESSING_FUNCTION_NAME   = module.processing.function_name
+        CLOUDFRONT_DISTRIBUTION_ID = aws_cloudfront_distribution.frontend.id
+      }
+    }
+    mcp-server = {
+      zip = "${path.module}/../../backend/target/lambda/mcp-server/bootstrap.zip"
+      routes = [
+        { priority = 214, paths = ["/mcp", "/.well-known/*"], authenticated = false },
+      ]
+      environment = { COGNITO_CLIENT_ID = module.cognito_app.client_id }
+    }
   }
 }
 
-# --- Recipes API ---
+# ── Processing (async, not HTTP-triggered) ──────────────────
 
-resource "aws_lambda_function" "recipes_api" {
-  function_name = "${local.prefix}-recipes-api"
-  role          = aws_iam_role.lambda.arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  architectures = ["x86_64"]
-  timeout       = 30
-  memory_size   = 256
+module "processing" {
+  source             = "git::https://github.com/chris-arsenault/ahara-tf-patterns.git//modules/lambda"
+  name               = "${local.prefix}-processing"
+  zip                = "${path.module}/../../backend/target/lambda/processing/bootstrap.zip"
+  role_arn           = module.api.role_arn
+  subnet_ids         = module.ctx.private_subnet_ids
+  security_group_ids = [module.api.security_group_id]
 
-  filename         = data.archive_file.recipes_api.output_path
-  source_code_hash = data.archive_file.recipes_api.output_base64sha256
-
-  vpc_config {
-    subnet_ids         = local.lambda_subnet_ids
-    security_group_ids = [aws_security_group.lambda.id]
-  }
-
-  environment {
-    variables = merge(local.common_env, {
-      PROCESSING_FUNCTION_NAME   = aws_lambda_function.processing.function_name
-      CLOUDFRONT_DISTRIBUTION_ID = aws_cloudfront_distribution.frontend.id
-    })
-  }
-}
-
-# --- MCP Server ---
-
-resource "aws_lambda_function" "mcp_server" {
-  function_name = "${local.prefix}-mcp-server"
-  role          = aws_iam_role.lambda.arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  architectures = ["x86_64"]
-  timeout       = 30
-  memory_size   = 256
-
-  filename         = data.archive_file.mcp_server.output_path
-  source_code_hash = data.archive_file.mcp_server.output_base64sha256
-
-  vpc_config {
-    subnet_ids         = local.lambda_subnet_ids
-    security_group_ids = [aws_security_group.lambda.id]
-  }
-
-  environment {
-    variables = merge(local.common_env, {
-      COGNITO_CLIENT_ID = aws_cognito_user_pool_client.app.id
-    })
-  }
-}
-
-# --- Processing (async, not HTTP-triggered) ---
-
-resource "aws_lambda_function" "processing" {
-  function_name = "${local.prefix}-processing"
-  role          = aws_iam_role.lambda.arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  architectures = ["x86_64"]
-  timeout       = 300
-  memory_size   = 512
-
-  filename         = data.archive_file.processing.output_path
-  source_code_hash = data.archive_file.processing.output_base64sha256
-
-  vpc_config {
-    subnet_ids         = local.lambda_subnet_ids
-    security_group_ids = [aws_security_group.lambda.id]
-  }
-
-  environment {
-    variables = merge(local.common_env, {
-      BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    })
-  }
+  environment = merge(local.common_env, {
+    BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+  })
 }

@@ -36,8 +36,8 @@ locals {
 
   runtime_config = {
     apiBaseUrl        = "https://${local.api_hostname}"
-    cognitoUserPoolId = local.cognito_pool_id
-    cognitoClientId   = aws_cognito_user_pool_client.app.id
+    cognitoUserPoolId = module.ctx.cognito_user_pool_id
+    cognitoClientId   = module.cognito_app.client_id
   }
 
   # Extract hashed entry files from Vite build output
@@ -146,7 +146,7 @@ data "archive_file" "og_server" {
 
 resource "aws_lambda_function" "og_server" {
   function_name = "${local.prefix}-og-server"
-  role          = aws_iam_role.lambda.arn
+  role          = module.api.role_arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
   architectures = ["x86_64"]
@@ -157,8 +157,8 @@ resource "aws_lambda_function" "og_server" {
   source_code_hash = data.archive_file.og_server.output_base64sha256
 
   vpc_config {
-    subnet_ids         = local.lambda_subnet_ids
-    security_group_ids = [aws_security_group.lambda.id]
+    subnet_ids         = module.ctx.private_subnet_ids
+    security_group_ids = [module.api.security_group_id]
   }
 
   environment {
@@ -413,7 +413,7 @@ resource "aws_route53_record" "frontend_cert_validation" {
     }
   }
 
-  zone_id = nonsensitive(data.aws_ssm_parameter.route53_zone_id.value)
+  zone_id = module.ctx.route53_zone_id
   name    = each.value.name
   type    = each.value.type
   ttl     = 60
@@ -428,7 +428,7 @@ resource "aws_acm_certificate_validation" "frontend" {
 # --- DNS ---
 
 resource "aws_route53_record" "frontend" {
-  zone_id = nonsensitive(data.aws_ssm_parameter.route53_zone_id.value)
+  zone_id = module.ctx.route53_zone_id
   name    = local.frontend_hostname
   type    = "A"
 
@@ -440,7 +440,7 @@ resource "aws_route53_record" "frontend" {
 }
 
 resource "aws_route53_record" "frontend_ipv6" {
-  zone_id = nonsensitive(data.aws_ssm_parameter.route53_zone_id.value)
+  zone_id = module.ctx.route53_zone_id
   name    = local.frontend_hostname
   type    = "AAAA"
 

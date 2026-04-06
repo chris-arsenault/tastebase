@@ -1,11 +1,11 @@
 output "mcp_client_id" {
   description = "MCP Cognito client ID — paste into Claude.ai connector settings"
-  value       = aws_cognito_user_pool_client.mcp.id
+  value       = module.cognito_mcp.client_id
 }
 
 output "mcp_client_secret" {
   description = "MCP Cognito client secret — paste into Claude.ai connector settings"
-  value       = aws_cognito_user_pool_client.mcp.client_secret
+  value       = module.cognito_mcp.client_secret
   sensitive   = true
 }
 
