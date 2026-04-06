@@ -6,7 +6,6 @@ members = [
     "recipes-api",
     "mcp-server",
     "processing",
-    "og-server",
 ]
 
 [workspace.dependencies]
