@@ -182,11 +182,20 @@ function useLinkedTooltip(
       const linkedId = el.dataset.linkedId!;
       setTooltip((prev) => {
         if (prev?.linkedId === linkedId) return prev;
-        const rect = el.getBoundingClientRect();
+        const rects = el.getClientRects();
+        const rect =
+          rects.length > 0
+            ? rects[rects.length - 1]
+            : el.getBoundingClientRect();
+        const tipW = 300;
+        let left = rect.left + rect.width / 2 - tipW / 2;
+        if (left < 8) left = 8;
+        if (left + tipW > window.innerWidth - 8)
+          left = window.innerWidth - tipW - 8;
         return {
           linkedId,
           preview: cache.current.get(linkedId) ?? null,
-          x: rect.left + rect.width / 2,
+          x: left,
           y: rect.bottom,
         };
       });
