@@ -41,7 +41,7 @@ module "api" {
       {
         Effect   = "Allow"
         Action   = ["cloudfront:CreateInvalidation"]
-        Resource = aws_cloudfront_distribution.frontend.arn
+        Resource = module.frontend.distribution_arn
       }
     ]
   })
@@ -63,7 +63,7 @@ module "api" {
       ]
       environment = {
         PROCESSING_FUNCTION_NAME   = module.processing.function_name
-        CLOUDFRONT_DISTRIBUTION_ID = aws_cloudfront_distribution.frontend.id
+        CLOUDFRONT_DISTRIBUTION_ID = module.frontend.distribution_id
       }
     }
     mcp-server = {
