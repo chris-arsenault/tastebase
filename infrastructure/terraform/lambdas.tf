@@ -79,12 +79,11 @@ module "api" {
 # ── Processing (async, not HTTP-triggered) ──────────────────
 
 module "processing" {
-  source             = "git::https://github.com/chris-arsenault/ahara-tf-patterns.git//modules/lambda"
-  name               = "${local.prefix}-processing"
-  binary             = "${path.module}/../../backend/target/lambda/processing/bootstrap"
-  role_arn           = module.api.role_arn
-  subnet_ids         = module.ctx.private_subnet_ids
-  security_group_ids = [module.api.security_group_id]
+  source  = "git::https://github.com/chris-arsenault/ahara-tf-patterns.git//modules/lambda"
+  name    = "${local.prefix}-processing"
+  binary  = "${path.module}/../../backend/target/lambda/processing/bootstrap"
+  role_arn = module.api.role_arn
+  timeout = 300
 
   environment = merge(local.common_env, {
     BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
