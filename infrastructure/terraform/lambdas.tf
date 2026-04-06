@@ -48,7 +48,7 @@ module "api" {
 
   lambdas = {
     tastings-api = {
-      zip = "${path.module}/../../backend/target/lambda/tastings-api/bootstrap.zip"
+      binary = "${path.module}/../../backend/target/lambda/tastings-api/bootstrap"
       routes = [
         { priority = 210, paths = ["/tastings", "/tastings/*"], methods = ["GET", "HEAD"], authenticated = false },
         { priority = 211, paths = ["/tastings", "/tastings/*"], authenticated = true },
@@ -56,7 +56,7 @@ module "api" {
       environment = { PROCESSING_FUNCTION_NAME = module.processing.function_name }
     }
     recipes-api = {
-      zip = "${path.module}/../../backend/target/lambda/recipes-api/bootstrap.zip"
+      binary = "${path.module}/../../backend/target/lambda/recipes-api/bootstrap"
       routes = [
         { priority = 212, paths = ["/recipes", "/recipes/*"], methods = ["GET", "HEAD"], authenticated = false },
         { priority = 213, paths = ["/recipes", "/recipes/*"], authenticated = true },
@@ -67,7 +67,7 @@ module "api" {
       }
     }
     mcp-server = {
-      zip = "${path.module}/../../backend/target/lambda/mcp-server/bootstrap.zip"
+      binary = "${path.module}/../../backend/target/lambda/mcp-server/bootstrap"
       routes = [
         { priority = 214, paths = ["/mcp", "/.well-known/*"], authenticated = false },
       ]
@@ -81,7 +81,7 @@ module "api" {
 module "processing" {
   source             = "git::https://github.com/chris-arsenault/ahara-tf-patterns.git//modules/lambda"
   name               = "${local.prefix}-processing"
-  zip                = "${path.module}/../../backend/target/lambda/processing/bootstrap.zip"
+  binary             = "${path.module}/../../backend/target/lambda/processing/bootstrap"
   role_arn           = module.api.role_arn
   subnet_ids         = module.ctx.private_subnet_ids
   security_group_ids = [module.api.security_group_id]
