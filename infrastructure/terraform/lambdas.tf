@@ -8,6 +8,7 @@ module "ctx" {
 
 module "api" {
   source   = "git::https://github.com/chris-arsenault/ahara-tf-patterns.git//modules/alb-api"
+  prefix   = local.prefix
   hostname = local.api_hostname
 
   environment = local.common_env
