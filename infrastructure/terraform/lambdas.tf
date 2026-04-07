@@ -13,7 +13,7 @@ module "api" {
 
   environment = local.common_env
 
-  iam_policy = jsonencode({
+  iam_policy = [jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -45,7 +45,7 @@ module "api" {
         Resource = module.frontend.distribution_arn
       }
     ]
-  })
+  })]
 
   lambdas = {
     tastings-api = {
@@ -80,11 +80,11 @@ module "api" {
 # ── Processing (async, not HTTP-triggered) ──────────────────
 
 module "processing" {
-  source  = "git::https://github.com/chris-arsenault/ahara-tf-patterns.git//modules/lambda"
-  name    = "${local.prefix}-processing"
-  binary  = "${path.module}/../../backend/target/lambda/processing/bootstrap"
+  source   = "git::https://github.com/chris-arsenault/ahara-tf-patterns.git//modules/lambda"
+  name     = "${local.prefix}-processing"
+  binary   = "${path.module}/../../backend/target/lambda/processing/bootstrap"
   role_arn = module.api.role_arn
-  timeout = 300
+  timeout  = 300
 
   environment = merge(local.common_env, {
     BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
