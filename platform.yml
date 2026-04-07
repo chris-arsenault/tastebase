@@ -5,3 +5,9 @@ stack:
   - rust
   - typescript
   - terraform
+rust_artifacts:
+  lambdas:
+    - tastings-api
+    - recipes-api
+    - mcp-server
+    - processing
