@@ -60,7 +60,7 @@ Schema: `users` + `cognito_users` (shared identity), `tastings` (tasting records
 
 ## Platform Integration
 
-Follows `~/src/platform/INTEGRATION.md`. Registered in platform-control and platform-services.
+Follows `~/src/ahara/INTEGRATION.md`. Registered in ahara-control and ahara-services.
 
 ## Key Decisions
 

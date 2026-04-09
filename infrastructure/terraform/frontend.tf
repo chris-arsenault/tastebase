@@ -6,6 +6,10 @@ module "frontend" {
   hostname       = local.frontend_hostname
   site_directory = "${path.module}/../../frontend/dist"
 
+  # og_config is set → website module needs vpc (for OG Lambda) + og_artifact
+  vpc         = module.ctx.vpc
+  og_artifact = module.ctx.og_server
+
   runtime_config = {
     apiBaseUrl        = "https://${local.api_hostname}"
     cognitoUserPoolId = module.ctx.cognito_user_pool_id

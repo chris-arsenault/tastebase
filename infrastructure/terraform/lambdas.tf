@@ -11,6 +11,10 @@ module "api" {
   prefix   = local.prefix
   hostname = local.api_hostname
 
+  vpc     = module.ctx.vpc
+  alb     = module.ctx.alb
+  cognito = module.ctx.cognito
+
   environment = local.common_env
 
   iam_policy = [jsonencode({
@@ -85,6 +89,8 @@ module "processing" {
   binary   = "${path.module}/../../backend/target/lambda/processing/bootstrap"
   role_arn = module.api.role_arn
   timeout  = 300
+
+  vpc = module.ctx.vpc
 
   environment = merge(local.common_env, {
     BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
