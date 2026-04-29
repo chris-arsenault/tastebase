@@ -52,23 +52,20 @@ export type CreateTastingInput = {
   tastingNotesUser?: string;
   tastingNotesVendor?: string;
   productUrl?: string;
-  imageBase64?: string;
+  imageKey?: string;
   imageMimeType?: string;
-  ingredientsImageBase64?: string;
+  ingredientsImageKey?: string;
   ingredientsImageMimeType?: string;
-  nutritionImageBase64?: string;
+  nutritionImageKey?: string;
   nutritionImageMimeType?: string;
-  voiceBase64?: string;
+  voiceKey?: string;
   voiceMimeType?: string;
 };
 
 export type UpdateTastingMediaInput = {
-  imageBase64?: string;
-  imageMimeType?: string;
-  ingredientsImageBase64?: string;
-  ingredientsImageMimeType?: string;
-  nutritionImageBase64?: string;
-  nutritionImageMimeType?: string;
+  imageKey?: string;
+  ingredientsImageKey?: string;
+  nutritionImageKey?: string;
 };
 
 export type Filters = {

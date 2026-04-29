@@ -7,11 +7,13 @@ import {
   updateTastingMedia,
 } from "../api";
 import type { AuthState } from "./useAuth";
-import type {
-  CreateTastingInput,
-  TastingRecord,
-  UpdateTastingMediaInput,
-} from "../types";
+import type { TastingRecord } from "../types";
+import {
+  buildCreatePayload,
+  buildEditMediaPayload,
+  uploadAllMedia,
+  type MediaData,
+} from "./useTastings.media";
 
 type FormMode = "add" | "edit";
 
@@ -20,8 +22,6 @@ const toNumberOrNull = (value: string) => {
   const parsed = Number(value);
   return Number.isNaN(parsed) ? null : parsed;
 };
-
-const trimOrUndefined = (value: string) => value.trim() || undefined;
 
 const emptyForm = {
   name: "",
@@ -54,21 +54,36 @@ const recordToFormState = (record: TastingRecord): FormState => ({
   productUrl: record.productUrl || "",
 });
 
-type MediaData = {
-  imageBase64: string;
-  imageMimeType: string;
-  ingredientsImageBase64: string;
-  ingredientsImageMimeType: string;
-  nutritionImageBase64: string;
-  nutritionImageMimeType: string;
-  audioBase64: string;
-  audioMimeType: string;
-};
-
 const trimFallback = (value: string, fallback: string) =>
   value.trim() || fallback;
 const numFallback = (value: string, fallback: number | null) =>
   toNumberOrNull(value) ?? fallback;
+
+const performEdit = async (
+  id: string,
+  formData: FormState,
+  mediaData: MediaData,
+  token: string,
+  ops: TastingOps,
+) => {
+  const keys = await uploadAllMedia(mediaData, token);
+  const mediaPayload = buildEditMediaPayload(keys);
+  const updatedMedia = mediaPayload
+    ? await updateTastingMedia(id, mediaPayload, token)
+    : null;
+  ops.update(id, (t) => buildEditedRecord(t, updatedMedia ?? t, formData));
+};
+
+const performCreate = async (
+  formData: FormState,
+  mediaData: MediaData,
+  token: string,
+  ops: TastingOps,
+) => {
+  const keys = await uploadAllMedia(mediaData, token);
+  await createTasting(buildCreatePayload(formData, keys), token);
+  ops.reload(true);
+};
 
 const buildEditedRecord = (
   existing: TastingRecord,
@@ -94,49 +109,6 @@ const buildEditedRecord = (
   productUrl: trimFallback(formData.productUrl, existing.productUrl),
   needsAttention: false,
   attentionReason: undefined,
-});
-
-const buildMediaPayload = (
-  mediaData: MediaData,
-): UpdateTastingMediaInput | null => {
-  const hasMedia = Boolean(
-    mediaData.imageBase64 ||
-    mediaData.ingredientsImageBase64 ||
-    mediaData.nutritionImageBase64,
-  );
-  if (!hasMedia) return null;
-  return {
-    imageBase64: mediaData.imageBase64 || undefined,
-    imageMimeType: mediaData.imageMimeType || undefined,
-    ingredientsImageBase64: mediaData.ingredientsImageBase64 || undefined,
-    ingredientsImageMimeType: mediaData.ingredientsImageMimeType || undefined,
-    nutritionImageBase64: mediaData.nutritionImageBase64 || undefined,
-    nutritionImageMimeType: mediaData.nutritionImageMimeType || undefined,
-  };
-};
-
-const buildCreatePayload = (
-  formData: FormState,
-  mediaData: MediaData,
-): CreateTastingInput => ({
-  name: trimOrUndefined(formData.name),
-  maker: trimOrUndefined(formData.maker),
-  date: formData.date || undefined,
-  score: toNumberOrNull(formData.score),
-  style: trimOrUndefined(formData.style),
-  heatUser: toNumberOrNull(formData.heatUser),
-  heatVendor: toNumberOrNull(formData.heatVendor),
-  tastingNotesUser: trimOrUndefined(formData.tastingNotesUser),
-  tastingNotesVendor: trimOrUndefined(formData.tastingNotesVendor),
-  productUrl: trimOrUndefined(formData.productUrl),
-  imageBase64: mediaData.imageBase64 || undefined,
-  imageMimeType: mediaData.imageMimeType || undefined,
-  ingredientsImageBase64: mediaData.ingredientsImageBase64 || undefined,
-  ingredientsImageMimeType: mediaData.ingredientsImageMimeType || undefined,
-  nutritionImageBase64: mediaData.nutritionImageBase64 || undefined,
-  nutritionImageMimeType: mediaData.nutritionImageMimeType || undefined,
-  voiceBase64: mediaData.audioBase64 || undefined,
-  voiceMimeType: mediaData.audioMimeType || undefined,
 });
 
 const asError = (error: unknown) => (error as Error).message;
@@ -295,30 +267,17 @@ function useSubmission(
     ops.setError("");
     const op =
       formState.formMode === "edit" && formState.editingId
-        ? performEdit(formState.editingId, formState.form, mediaData)
-        : performCreate(buildCreatePayload(formState.form, mediaData));
-    op.catch((e: unknown) => ops.setError(asError(e))).finally(() =>
-      setSubmitStatus("idle"),
-    );
-  };
-
-  const performEdit = async (
-    id: string,
-    formData: FormState,
-    mediaData: MediaData,
-  ) => {
-    const mediaPayload = buildMediaPayload(mediaData);
-    const updatedMedia = mediaPayload
-      ? await updateTastingMedia(id, mediaPayload, auth.token)
-      : null;
-    ops.update(id, (t) => buildEditedRecord(t, updatedMedia ?? t, formData));
-    finishSubmit();
-  };
-
-  const performCreate = async (payload: CreateTastingInput) => {
-    await createTasting(payload, auth.token);
-    ops.reload(true);
-    finishSubmit();
+        ? performEdit(
+            formState.editingId,
+            formState.form,
+            mediaData,
+            auth.token,
+            ops,
+          )
+        : performCreate(formState.form, mediaData, auth.token, ops);
+    op.then(finishSubmit)
+      .catch((e: unknown) => ops.setError(asError(e)))
+      .finally(() => setSubmitStatus("idle"));
   };
 
   const handleRerun = (record: TastingRecord) => {

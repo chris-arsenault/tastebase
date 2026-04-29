@@ -7,6 +7,10 @@ use shared::error::AppError;
 use shared::types::{Tasting, TastingPublic};
 use uuid::Uuid;
 
+fn public_url_for_key(bucket: &str, key: &str) -> String {
+    format!("https://{bucket}.s3.amazonaws.com/{key}")
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ListParams {
@@ -95,13 +99,13 @@ struct CreateTastingInput {
     tasting_notes_user: Option<String>,
     tasting_notes_vendor: Option<String>,
     product_url: Option<String>,
-    image_base64: Option<String>,
+    image_key: Option<String>,
     image_mime_type: Option<String>,
-    ingredients_image_base64: Option<String>,
+    ingredients_image_key: Option<String>,
     ingredients_image_mime_type: Option<String>,
-    nutrition_image_base64: Option<String>,
+    nutrition_image_key: Option<String>,
     nutrition_image_mime_type: Option<String>,
-    voice_base64: Option<String>,
+    voice_key: Option<String>,
     voice_mime_type: Option<String>,
 }
 
@@ -124,18 +128,6 @@ async fn create_tasting(
         input.tasting_notes_vendor.as_deref(),
         input.product_url.as_deref(),
     )?;
-    shared::validate::validate_base64_fields(&[
-        ("imageBase64", input.image_base64.as_deref()),
-        (
-            "ingredientsImageBase64",
-            input.ingredients_image_base64.as_deref(),
-        ),
-        (
-            "nutritionImageBase64",
-            input.nutrition_image_base64.as_deref(),
-        ),
-        ("voiceBase64", input.voice_base64.as_deref()),
-    ])?;
 
     let name = shared::sanitize::clean_or_empty(input.name.as_deref());
     let maker = shared::sanitize::clean_or_empty(input.maker.as_deref());
@@ -154,42 +146,18 @@ async fn create_tasting(
     )
     .unwrap_or_else(|_| now.date());
 
-    let image = upload_if_present(
-        &state,
-        &input.image_base64,
-        &input.image_mime_type,
-        &format!("images/{id}"),
-        "jpg",
-    )
-    .await?;
-    let ingredients = upload_if_present(
-        &state,
-        &input.ingredients_image_base64,
-        &input.ingredients_image_mime_type,
-        &format!("images/{id}-ingredients"),
-        "jpg",
-    )
-    .await?;
-    let nutrition = upload_if_present(
-        &state,
-        &input.nutrition_image_base64,
-        &input.nutrition_image_mime_type,
-        &format!("images/{id}-nutrition"),
-        "jpg",
-    )
-    .await?;
-    let voice = upload_if_present(
-        &state,
-        &input.voice_base64,
-        &input.voice_mime_type,
-        &format!("voice/{id}"),
-        "webm",
-    )
-    .await?;
-
-    if voice.is_some() {
-        tracing::info!(tasting_id = %id, "voice media uploaded");
-    }
+    let image_url = input
+        .image_key
+        .as_deref()
+        .map(|k| public_url_for_key(&state.media_bucket, k));
+    let ingredients_url = input
+        .ingredients_image_key
+        .as_deref()
+        .map(|k| public_url_for_key(&state.media_bucket, k));
+    let nutrition_url = input
+        .nutrition_image_key
+        .as_deref()
+        .map(|k| public_url_for_key(&state.media_bucket, k));
 
     sqlx::query(
         "INSERT INTO tastings (id, name, maker, date, score, style,
@@ -214,13 +182,13 @@ async fn create_tasting(
     .bind(&tasting_notes_user)
     .bind(&tasting_notes_vendor)
     .bind(&product_url)
-    .bind(image.as_ref().map(|m| m.url.as_str()))
-    .bind(image.as_ref().map(|m| m.key.as_str()))
-    .bind(ingredients.as_ref().map(|m| m.url.as_str()))
-    .bind(ingredients.as_ref().map(|m| m.key.as_str()))
-    .bind(nutrition.as_ref().map(|m| m.url.as_str()))
-    .bind(nutrition.as_ref().map(|m| m.key.as_str()))
-    .bind(voice.as_ref().map(|m| m.key.as_str()))
+    .bind(image_url.as_deref())
+    .bind(input.image_key.as_deref())
+    .bind(ingredients_url.as_deref())
+    .bind(input.ingredients_image_key.as_deref())
+    .bind(nutrition_url.as_deref())
+    .bind(input.nutrition_image_key.as_deref())
+    .bind(input.voice_key.as_deref())
     .bind(now)
     .execute(&state.db)
     .await?;
@@ -231,14 +199,18 @@ async fn create_tasting(
         &state.db,
         id,
         false,
-        image.as_ref().map(|m| m.key.as_str()),
-        ingredients.as_ref().map(|m| m.key.as_str()),
-        nutrition.as_ref().map(|m| m.key.as_str()),
-        voice.as_ref().map(|m| m.key.as_str()),
-        resolve_mime(&image, input.image_mime_type.as_deref()),
-        resolve_mime(&ingredients, input.ingredients_image_mime_type.as_deref()),
-        resolve_mime(&nutrition, input.nutrition_image_mime_type.as_deref()),
-        resolve_mime(&voice, input.voice_mime_type.as_deref()),
+        input.image_key.as_deref(),
+        input.ingredients_image_key.as_deref(),
+        input.nutrition_image_key.as_deref(),
+        input.voice_key.as_deref(),
+        normalize_mime(input.image_mime_type.as_deref())
+            .or_else(|| infer_mime(input.image_key.as_deref())),
+        normalize_mime(input.ingredients_image_mime_type.as_deref())
+            .or_else(|| infer_mime(input.ingredients_image_key.as_deref())),
+        normalize_mime(input.nutrition_image_mime_type.as_deref())
+            .or_else(|| infer_mime(input.nutrition_image_key.as_deref())),
+        normalize_mime(input.voice_mime_type.as_deref())
+            .or_else(|| infer_mime(input.voice_key.as_deref())),
     )
     .await;
 
@@ -264,12 +236,9 @@ async fn delete_tasting(
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdateMediaInput {
-    image_base64: Option<String>,
-    image_mime_type: Option<String>,
-    ingredients_image_base64: Option<String>,
-    ingredients_image_mime_type: Option<String>,
-    nutrition_image_base64: Option<String>,
-    nutrition_image_mime_type: Option<String>,
+    image_key: Option<String>,
+    ingredients_image_key: Option<String>,
+    nutrition_image_key: Option<String>,
 }
 
 async fn update_media(
@@ -277,53 +246,33 @@ async fn update_media(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateMediaInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let tasting: Option<Tasting> = sqlx::query_as("SELECT * FROM tastings WHERE id = $1")
+    let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM tastings WHERE id = $1")
         .bind(id)
         .fetch_optional(&state.db)
         .await?;
+    if exists.is_none() {
+        return Err(AppError::NotFound);
+    }
 
-    let tasting = tasting.ok_or(AppError::NotFound)?;
-
-    shared::validate::validate_base64_fields(&[
-        ("imageBase64", input.image_base64.as_deref()),
-        (
-            "ingredientsImageBase64",
-            input.ingredients_image_base64.as_deref(),
-        ),
-        (
-            "nutritionImageBase64",
-            input.nutrition_image_base64.as_deref(),
-        ),
-    ])?;
-
-    let image = upload_if_present(
-        &state,
-        &input.image_base64,
-        &input.image_mime_type,
-        &format!("images/{}", tasting.id),
-        "jpg",
-    )
-    .await?;
-    let ingredients = upload_if_present(
-        &state,
-        &input.ingredients_image_base64,
-        &input.ingredients_image_mime_type,
-        &format!("images/{}-ingredients", tasting.id),
-        "jpg",
-    )
-    .await?;
-    let nutrition = upload_if_present(
-        &state,
-        &input.nutrition_image_base64,
-        &input.nutrition_image_mime_type,
-        &format!("images/{}-nutrition", tasting.id),
-        "jpg",
-    )
-    .await?;
-
-    if image.is_none() && ingredients.is_none() && nutrition.is_none() {
+    if input.image_key.is_none()
+        && input.ingredients_image_key.is_none()
+        && input.nutrition_image_key.is_none()
+    {
         return Err(AppError::BadRequest("no media provided".into()));
     }
+
+    let image_url = input
+        .image_key
+        .as_deref()
+        .map(|k| public_url_for_key(&state.media_bucket, k));
+    let ingredients_url = input
+        .ingredients_image_key
+        .as_deref()
+        .map(|k| public_url_for_key(&state.media_bucket, k));
+    let nutrition_url = input
+        .nutrition_image_key
+        .as_deref()
+        .map(|k| public_url_for_key(&state.media_bucket, k));
 
     let now = time::OffsetDateTime::now_utc();
     sqlx::query(
@@ -338,12 +287,12 @@ async fn update_media(
          WHERE id = $1",
     )
     .bind(id)
-    .bind(image.as_ref().map(|m| m.url.as_str()))
-    .bind(image.as_ref().map(|m| m.key.as_str()))
-    .bind(ingredients.as_ref().map(|m| m.url.as_str()))
-    .bind(ingredients.as_ref().map(|m| m.key.as_str()))
-    .bind(nutrition.as_ref().map(|m| m.url.as_str()))
-    .bind(nutrition.as_ref().map(|m| m.key.as_str()))
+    .bind(image_url.as_deref())
+    .bind(input.image_key.as_deref())
+    .bind(ingredients_url.as_deref())
+    .bind(input.ingredients_image_key.as_deref())
+    .bind(nutrition_url.as_deref())
+    .bind(input.nutrition_image_key.as_deref())
     .bind(now)
     .execute(&state.db)
     .await?;
@@ -356,6 +305,51 @@ async fn update_media(
     tracing::info!(tasting_id = %id, "media updated");
     let public: TastingPublic = updated.into();
     Ok(Json(serde_json::json!({ "data": public })))
+}
+
+// -- Upload URL endpoint: returns presigned S3 PUT URL --
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UploadUrlInput {
+    content_type: String,
+    upload_type: String, // "image" or "voice"
+}
+
+async fn get_upload_url(
+    State(state): State<AppState>,
+    Json(input): Json<UploadUrlInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let ext = input
+        .content_type
+        .split(';')
+        .next()
+        .unwrap_or(&input.content_type)
+        .split('/')
+        .nth(1)
+        .unwrap_or("bin");
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let prefix = match input.upload_type.as_str() {
+        "voice" => "tasting-voice",
+        _ => "tasting-images",
+    };
+    let id = Uuid::new_v4();
+    let key = format!("{prefix}/{ts}-{id}.{ext}");
+
+    let (presigned_url, public_url) =
+        shared::media::presign_upload(&state.s3, &state.media_bucket, &key, &input.content_type)
+            .await?;
+
+    tracing::info!(upload_type = %input.upload_type, key = %key, "presigned URL generated");
+
+    Ok(Json(serde_json::json!({
+        "uploadUrl": presigned_url,
+        "key": key,
+        "publicUrl": public_url
+    })))
 }
 
 async fn rerun_processing(
@@ -404,47 +398,9 @@ async fn rerun_processing(
 
 // -- Helpers --
 
-struct MediaResult {
-    url: String,
-    key: String,
-    content_type: String,
-}
-
-async fn upload_if_present(
-    state: &AppState,
-    data: &Option<String>,
-    mime: &Option<String>,
-    prefix: &str,
-    default_ext: &str,
-) -> Result<Option<MediaResult>, AppError> {
-    let data = match data {
-        Some(d) if !d.is_empty() => d,
-        _ => return Ok(None),
-    };
-    let fallback_mime = mime.as_deref();
-    let (bytes, content_type) = shared::media::parse_base64_payload(data, fallback_mime)
-        .ok_or_else(|| AppError::BadRequest("invalid base64 media".into()))?;
-
-    let ext = content_type.split('/').nth(1).unwrap_or(default_ext);
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let key = format!("{prefix}-{ts}.{ext}");
-    let url =
-        shared::media::upload(&state.s3, &state.media_bucket, &key, bytes, &content_type).await?;
-    Ok(Some(MediaResult {
-        url,
-        key,
-        content_type,
-    }))
-}
-
-fn resolve_mime(media: &Option<MediaResult>, fallback: Option<&str>) -> Option<String> {
-    media
-        .as_ref()
-        .map(|m| m.content_type.clone())
-        .or_else(|| fallback.map(|s| s.split(';').next().unwrap_or(s).trim().to_string()))
+fn normalize_mime(mime: Option<&str>) -> Option<String> {
+    mime.map(|s| s.split(';').next().unwrap_or(s).trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn infer_mime(key: Option<&str>) -> Option<String> {
@@ -536,6 +492,7 @@ async fn invoke_processing(
 fn router(state: AppState) -> Router {
     Router::new()
         .route("/tastings", get(list_tastings).post(create_tasting))
+        .route("/tastings/upload-url", post(get_upload_url))
         .route("/tastings/{id}", delete(delete_tasting))
         .route("/tastings/{id}/media", post(update_media))
         .route("/tastings/{id}/rerun", post(rerun_processing))

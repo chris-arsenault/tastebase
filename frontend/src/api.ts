@@ -7,6 +7,43 @@ import type {
   UpdateTastingMediaInput,
 } from "./types";
 
+type TastingUploadType = "image" | "voice";
+
+const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
+  const response = await fetch(dataUrl);
+  return response.blob();
+};
+
+export const uploadTastingMedia = async (
+  dataUrl: string,
+  contentType: string,
+  uploadType: TastingUploadType,
+  token: string,
+): Promise<string> => {
+  const presign = await fetch(`${config.apiBaseUrl}/tastings/upload-url`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ contentType, uploadType }),
+  });
+  if (!presign.ok) throw new Error("Failed to get upload URL");
+  const { uploadUrl, key } = (await presign.json()) as {
+    uploadUrl: string;
+    key: string;
+    publicUrl: string;
+  };
+  const blob = await dataUrlToBlob(dataUrl);
+  const put = await fetch(uploadUrl, {
+    method: "PUT",
+    body: blob,
+    headers: { "Content-Type": contentType },
+  });
+  if (!put.ok) throw new Error("Failed to upload media");
+  return key;
+};
+
 export const fetchTastings = async (): Promise<TastingRecord[]> => {
   const response = await fetch(`${config.apiBaseUrl}/tastings`);
   if (!response.ok) {
