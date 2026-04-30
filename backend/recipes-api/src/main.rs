@@ -300,56 +300,46 @@ fn slugify(title: &str) -> String {
         .join("-")
 }
 
-#[allow(clippy::cognitive_complexity)]
-async fn invalidate_recipe_og(recipe_id: Uuid, db: &sqlx::PgPool) {
-    let distribution_id = match std::env::var("CLOUDFRONT_DISTRIBUTION_ID") {
-        Ok(id) if !id.is_empty() => id,
-        _ => {
-            tracing::warn!("CLOUDFRONT_DISTRIBUTION_ID not set, skipping invalidation");
-            return;
-        }
-    };
-
+async fn fetch_recipe_slug(db: &sqlx::PgPool, recipe_id: Uuid) -> Option<String> {
     let title: Option<(String,)> = sqlx::query_as("SELECT title FROM recipes WHERE id = $1")
         .bind(recipe_id)
         .fetch_optional(db)
         .await
         .ok()
         .flatten();
+    title.map(|(t,)| slugify(&t))
+}
 
-    let slug = match title {
-        Some((t,)) => slugify(&t),
-        None => {
-            tracing::warn!(recipe_id = %recipe_id, "recipe not found for OG invalidation");
-            return;
-        }
-    };
-
-    let path = format!("/recipes/{slug}");
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-    let client = aws_sdk_cloudfront::Client::new(&config);
-
+fn build_invalidation_batch(
+    recipe_id: Uuid,
+    path: &str,
+) -> aws_sdk_cloudfront::types::InvalidationBatch {
     let paths = aws_sdk_cloudfront::types::Paths::builder()
         .quantity(1)
-        .items(&path)
+        .items(path)
         .build()
         .unwrap();
-
-    let batch = aws_sdk_cloudfront::types::InvalidationBatch::builder()
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    aws_sdk_cloudfront::types::InvalidationBatch::builder()
         .paths(paths)
-        .caller_reference(format!(
-            "{recipe_id}-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis()
-        ))
+        .caller_reference(format!("{recipe_id}-{ts}"))
         .build()
-        .unwrap();
+        .unwrap()
+}
 
+async fn submit_cloudfront_invalidation(
+    distribution_id: &str,
+    batch: aws_sdk_cloudfront::types::InvalidationBatch,
+    path: &str,
+) {
+    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let client = aws_sdk_cloudfront::Client::new(&config);
     match client
         .create_invalidation()
-        .distribution_id(&distribution_id)
+        .distribution_id(distribution_id)
         .invalidation_batch(batch)
         .send()
         .await
@@ -357,6 +347,25 @@ async fn invalidate_recipe_og(recipe_id: Uuid, db: &sqlx::PgPool) {
         Ok(_) => tracing::info!(path = %path, "CloudFront OG invalidation created"),
         Err(e) => tracing::error!(path = %path, error = %e, "failed to invalidate CloudFront"),
     }
+}
+
+async fn invalidate_recipe_og(recipe_id: Uuid, db: &sqlx::PgPool) {
+    let distribution_id = std::env::var("CLOUDFRONT_DISTRIBUTION_ID")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let Some(distribution_id) = distribution_id else {
+        tracing::warn!("CLOUDFRONT_DISTRIBUTION_ID not set, skipping invalidation");
+        return;
+    };
+
+    let Some(slug) = fetch_recipe_slug(db, recipe_id).await else {
+        tracing::warn!(recipe_id = %recipe_id, "recipe not found for OG invalidation");
+        return;
+    };
+
+    let path = format!("/recipes/{slug}");
+    let batch = build_invalidation_batch(recipe_id, &path);
+    submit_cloudfront_invalidation(&distribution_id, batch, &path).await;
 }
 
 // -- Submit voice review: register and trigger processing --
@@ -396,14 +405,32 @@ async fn submit_voice_review(
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
-#[allow(clippy::cognitive_complexity)]
+async fn dispatch_processing_lambda(
+    function_name: &str,
+    payload: serde_json::Value,
+) -> Result<(), String> {
+    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let client = aws_sdk_lambda::Client::new(&config);
+    client
+        .invoke()
+        .function_name(function_name)
+        .invocation_type(aws_sdk_lambda::types::InvocationType::Event)
+        .payload(aws_sdk_lambda::primitives::Blob::new(
+            serde_json::to_vec(&payload).unwrap_or_default(),
+        ))
+        .send()
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 async fn invoke_processing(recipe_id: Uuid, review_id: Uuid, voice_key: &str, voice_mime: &str) {
-    let function_name = match std::env::var("PROCESSING_FUNCTION_NAME") {
-        Ok(name) if !name.is_empty() => name,
-        _ => {
-            tracing::warn!("PROCESSING_FUNCTION_NAME not set, skipping");
-            return;
-        }
+    let function_name = std::env::var("PROCESSING_FUNCTION_NAME")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let Some(function_name) = function_name else {
+        tracing::warn!("PROCESSING_FUNCTION_NAME not set, skipping");
+        return;
     };
 
     let payload = serde_json::json!({
@@ -414,22 +441,10 @@ async fn invoke_processing(recipe_id: Uuid, review_id: Uuid, voice_key: &str, vo
         "voice_mime_type": voice_mime,
     });
 
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-    let client = aws_sdk_lambda::Client::new(&config);
-
-    match client
-        .invoke()
-        .function_name(&function_name)
-        .invocation_type(aws_sdk_lambda::types::InvocationType::Event)
-        .payload(aws_sdk_lambda::primitives::Blob::new(
-            serde_json::to_vec(&payload).unwrap_or_default(),
-        ))
-        .send()
-        .await
-    {
-        Ok(_) => tracing::info!(review_id = %review_id, "processing invoked"),
+    match dispatch_processing_lambda(&function_name, payload).await {
+        Ok(()) => tracing::info!(review_id = %review_id, "processing invoked"),
         Err(e) => {
-            tracing::error!(review_id = %review_id, error = %e, "failed to invoke processing")
+            tracing::error!(review_id = %review_id, error = %e, "failed to invoke processing");
         }
     }
 }

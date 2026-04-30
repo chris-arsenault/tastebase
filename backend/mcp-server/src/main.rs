@@ -65,52 +65,33 @@ async fn mcp_get() -> StatusCode {
     StatusCode::METHOD_NOT_ALLOWED
 }
 
-// POST /mcp — all JSON-RPC messages from client
-#[allow(clippy::cognitive_complexity)]
-async fn mcp_post(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(msg): Json<McpMessage>,
-) -> axum::response::Response {
+fn unauthorized_response(method: &str, error: &AppError) -> axum::response::Response {
+    tracing::warn!(method = %method, error = %error, "MCP auth failed");
+    let api_url = std::env::var("API_BASE_URL").unwrap_or_default();
+    (
+        StatusCode::UNAUTHORIZED,
+        [(
+            "WWW-Authenticate",
+            format!("Bearer resource_metadata=\"{api_url}/.well-known/oauth-protected-resource\""),
+        )],
+        Json(serde_json::json!({"message": "unauthorized"})),
+    )
+        .into_response()
+}
+
+async fn dispatch_method(
+    msg: McpMessage,
+    state: &AppState,
+    user: &shared::types::UserContext,
+) -> Result<JsonRpcResponse, JsonRpcResponse> {
     let method = msg.method.clone();
-    let is_notification = msg.id.is_none();
-    tracing::info!(method = %method, is_notification, "MCP request");
-
-    // Authenticate — return 401 with WWW-Authenticate for OAuth discovery on failure
-    let user = match authenticate(&headers) {
-        Ok(u) => {
-            tracing::info!(user_sub = %u.sub, method = %method, "MCP auth OK");
-            u
-        }
-        Err(e) => {
-            tracing::warn!(method = %method, error = %e, "MCP auth failed");
-            let api_url = std::env::var("API_BASE_URL").unwrap_or_default();
-            return (
-                StatusCode::UNAUTHORIZED,
-                [(
-                    "WWW-Authenticate",
-                    format!("Bearer resource_metadata=\"{api_url}/.well-known/oauth-protected-resource\""),
-                )],
-                Json(serde_json::json!({"message": "unauthorized"})),
-            )
-                .into_response();
-        }
-    };
-
-    // Notifications have no id and expect 202 Accepted with no body
-    if is_notification {
-        tracing::info!(method = %method, "notification acknowledged");
-        return StatusCode::ACCEPTED.into_response();
-    }
-
-    // JSON-RPC requests — dispatch by method
-    let result = match method.as_str() {
+    match method.as_str() {
         "initialize" => handle_initialize(msg),
         "ping" => handle_ping(msg),
         "tools/list" => handle_tools_list(msg),
         "tools/call" => {
             tracing::info!(user_sub = %user.sub, "tools/call");
-            handle_tools_call(msg, &state, &user).await
+            handle_tools_call(msg, state, user).await
         }
         other => {
             tracing::warn!(method = %other, "unknown method");
@@ -120,8 +101,13 @@ async fn mcp_post(
                 &format!("Method not found: {other}"),
             ))
         }
-    };
+    }
+}
 
+fn render_jsonrpc_response(
+    method: &str,
+    result: Result<JsonRpcResponse, JsonRpcResponse>,
+) -> axum::response::Response {
     match result {
         Ok(resp) => {
             tracing::info!(method = %method, "response OK");
@@ -132,6 +118,33 @@ async fn mcp_post(
             Json(err).into_response()
         }
     }
+}
+
+// POST /mcp — all JSON-RPC messages from client
+async fn mcp_post(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(msg): Json<McpMessage>,
+) -> axum::response::Response {
+    let method = msg.method.clone();
+    let is_notification = msg.id.is_none();
+    tracing::info!(method = %method, is_notification, "MCP request");
+
+    let user = match authenticate(&headers) {
+        Ok(u) => {
+            tracing::info!(user_sub = %u.sub, method = %method, "MCP auth OK");
+            u
+        }
+        Err(e) => return unauthorized_response(&method, &e),
+    };
+
+    if is_notification {
+        tracing::info!(method = %method, "notification acknowledged");
+        return StatusCode::ACCEPTED.into_response();
+    }
+
+    let result = dispatch_method(msg, &state, &user).await;
+    render_jsonrpc_response(&method, result)
 }
 
 // -- Auth --
@@ -423,7 +436,99 @@ fn update_recipe_tool_def() -> serde_json::Value {
     })
 }
 
-#[allow(clippy::cognitive_complexity)]
+fn tool_text_response(
+    msg_id: Option<serde_json::Value>,
+    text: String,
+    is_error: bool,
+) -> JsonRpcResponse {
+    jsonrpc_result(
+        msg_id,
+        serde_json::json!({
+            "content": [{ "type": "text", "text": text }],
+            "isError": is_error
+        }),
+    )
+}
+
+fn tool_json_response<T: serde::Serialize>(
+    msg_id: Option<serde_json::Value>,
+    value: &T,
+) -> JsonRpcResponse {
+    tool_text_response(msg_id, serde_json::to_string(value).unwrap(), false)
+}
+
+async fn dispatch_list_recipes(
+    msg_id: Option<serde_json::Value>,
+    state: &AppState,
+    arguments: serde_json::Value,
+) -> JsonRpcResponse {
+    let search = arguments
+        .get("search")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    match list_recipes(state, search).await {
+        Ok(result) => tool_json_response(msg_id, &result),
+        Err(e) => {
+            tracing::error!(error = %e, "list_recipes failed");
+            tool_text_response(msg_id, format!("list_recipes failed: {e}"), true)
+        }
+    }
+}
+
+async fn dispatch_save_recipe(
+    msg_id: Option<serde_json::Value>,
+    state: &AppState,
+    user: &shared::types::UserContext,
+    arguments: serde_json::Value,
+) -> JsonRpcResponse {
+    let recipe_params: SaveRecipeParams = match serde_json::from_value(arguments) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = %e, "save_recipe validation failed");
+            return tool_text_response(msg_id, format!("{e}"), true);
+        }
+    };
+    match save_recipe(state, user, recipe_params).await {
+        Ok(result) => tool_json_response(msg_id, &result),
+        Err(e) => {
+            tracing::error!(error = %e, "save_recipe execution failed");
+            tool_text_response(
+                msg_id,
+                format!(
+                    "save_recipe failed: {e}. This is a server-side error. The recipe was not saved. You may retry the call with the same arguments."
+                ),
+                true,
+            )
+        }
+    }
+}
+
+async fn dispatch_update_recipe(
+    msg_id: Option<serde_json::Value>,
+    state: &AppState,
+    user: &shared::types::UserContext,
+    arguments: serde_json::Value,
+) -> JsonRpcResponse {
+    let recipe_params: UpdateRecipeParams = match serde_json::from_value(arguments) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = %e, "update_recipe validation failed");
+            return tool_text_response(msg_id, format!("{e}"), true);
+        }
+    };
+    match update_recipe(state, user, recipe_params).await {
+        Ok(result) => tool_json_response(msg_id, &result),
+        Err(e) => {
+            tracing::error!(error = %e, "update_recipe execution failed");
+            tool_text_response(
+                msg_id,
+                format!("update_recipe failed: {e}. The recipe was not modified."),
+                true,
+            )
+        }
+    }
+}
+
 async fn handle_tools_call(
     msg: McpMessage,
     state: &AppState,
@@ -435,118 +540,30 @@ async fn handle_tools_call(
     let tool_name = params
         .get("name")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing tool name"))?;
+        .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing tool name"))?
+        .to_string();
 
-    match tool_name {
+    match tool_name.as_str() {
         "list_recipes" => {
             let arguments = params
                 .get("arguments")
                 .cloned()
                 .unwrap_or(serde_json::json!({}));
-            let search = arguments
-                .get("search")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            match list_recipes(state, search).await {
-                Ok(result) => Ok(jsonrpc_result(
-                    msg.id,
-                    serde_json::json!({
-                        "content": [{ "type": "text", "text": serde_json::to_string(&result).unwrap() }],
-                        "isError": false
-                    }),
-                )),
-                Err(e) => {
-                    tracing::error!(error = %e, "list_recipes failed");
-                    Ok(jsonrpc_result(
-                        msg.id,
-                        serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("list_recipes failed: {e}") }],
-                            "isError": true
-                        }),
-                    ))
-                }
-            }
+            Ok(dispatch_list_recipes(msg.id, state, arguments).await)
         }
         "save_recipe" => {
             let arguments = params
                 .get("arguments")
+                .cloned()
                 .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing arguments"))?;
-            let recipe_params: SaveRecipeParams = match serde_json::from_value(arguments.clone()) {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::warn!(error = %e, "save_recipe validation failed");
-                    return Ok(jsonrpc_result(
-                        msg.id,
-                        serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("{e}") }],
-                            "isError": true
-                        }),
-                    ));
-                }
-            };
-
-            match save_recipe(state, user, recipe_params).await {
-                Ok(result) => Ok(jsonrpc_result(
-                    msg.id,
-                    serde_json::json!({
-                        "content": [{ "type": "text", "text": serde_json::to_string(&result).unwrap() }],
-                        "isError": false
-                    }),
-                )),
-                Err(e) => {
-                    tracing::error!(error = %e, "save_recipe execution failed");
-                    Ok(jsonrpc_result(
-                        msg.id,
-                        serde_json::json!({
-                            "content": [{ "type": "text", "text": format!(
-                                "save_recipe failed: {e}. This is a server-side error. The recipe was not saved. You may retry the call with the same arguments."
-                            ) }],
-                            "isError": true
-                        }),
-                    ))
-                }
-            }
+            Ok(dispatch_save_recipe(msg.id, state, user, arguments).await)
         }
         "update_recipe" => {
             let arguments = params
                 .get("arguments")
+                .cloned()
                 .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing arguments"))?;
-            let recipe_params: UpdateRecipeParams = match serde_json::from_value(arguments.clone())
-            {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::warn!(error = %e, "update_recipe validation failed");
-                    return Ok(jsonrpc_result(
-                        msg.id,
-                        serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("{e}") }],
-                            "isError": true
-                        }),
-                    ));
-                }
-            };
-
-            match update_recipe(state, user, recipe_params).await {
-                Ok(result) => Ok(jsonrpc_result(
-                    msg.id,
-                    serde_json::json!({
-                        "content": [{ "type": "text", "text": serde_json::to_string(&result).unwrap() }],
-                        "isError": false
-                    }),
-                )),
-                Err(e) => {
-                    tracing::error!(error = %e, "update_recipe execution failed");
-                    Ok(jsonrpc_result(
-                        msg.id,
-                        serde_json::json!({
-                            "content": [{ "type": "text", "text": format!(
-                                "update_recipe failed: {e}. The recipe was not modified."
-                            ) }],
-                            "isError": true
-                        }),
-                    ))
-                }
-            }
+            Ok(dispatch_update_recipe(msg.id, state, user, arguments).await)
         }
         _ => Err(jsonrpc_error(
             msg.id,
@@ -717,7 +734,230 @@ struct UpdateRecipeParams {
     steps: Option<Vec<StepParam>>,
 }
 
-#[allow(clippy::cognitive_complexity)]
+struct LatestRecipeRow {
+    id: Uuid,
+    version: i32,
+    title: String,
+    description: Option<String>,
+    base_servings: i32,
+    notes: Option<String>,
+}
+
+async fn fetch_latest_recipe(
+    db: &sqlx::PgPool,
+    group_id: Uuid,
+) -> Result<LatestRecipeRow, AppError> {
+    let row: (Uuid, i32, String, Option<String>, i32, Option<String>) = sqlx::query_as(
+        "SELECT id, version, title, description, base_servings, notes
+         FROM recipes WHERE version_group_id = $1
+         ORDER BY version DESC LIMIT 1",
+    )
+    .bind(group_id)
+    .fetch_one(db)
+    .await?;
+    Ok(LatestRecipeRow {
+        id: row.0,
+        version: row.1,
+        title: row.2,
+        description: row.3,
+        base_servings: row.4,
+        notes: row.5,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn insert_new_version_row(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    new_id: Uuid,
+    title: &str,
+    description: Option<&str>,
+    base_servings: i32,
+    notes: Option<&str>,
+    new_version: i32,
+    group_id: Uuid,
+    now: time::OffsetDateTime,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO recipes (id, title, description, base_servings, notes, source, version, version_group_id, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)",
+    )
+    .bind(new_id)
+    .bind(title)
+    .bind(description)
+    .bind(base_servings)
+    .bind(notes)
+    .bind(RecipeSource::Claude)
+    .bind(new_version)
+    .bind(group_id)
+    .bind(now)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+async fn copy_ingredients(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    new_id: Uuid,
+    latest_id: Uuid,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
+         SELECT $1, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id
+         FROM recipe_ingredients WHERE recipe_id = $2 ORDER BY sort_order",
+    )
+    .bind(new_id)
+    .bind(latest_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+async fn copy_steps(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    new_id: Uuid,
+    latest_id: Uuid,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order)
+         SELECT $1, widget_id, title, content, timer_seconds, sort_order
+         FROM recipe_steps WHERE recipe_id = $2 ORDER BY sort_order",
+    )
+    .bind(new_id)
+    .bind(latest_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn create_new_recipe_version(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    latest: &LatestRecipeRow,
+    group_id: Uuid,
+    title: &str,
+    description: Option<&str>,
+    servings: i32,
+    notes: Option<&str>,
+    has_new_ingredients: bool,
+    has_new_steps: bool,
+    now: time::OffsetDateTime,
+) -> Result<Uuid, AppError> {
+    let new_id = Uuid::new_v4();
+    let new_version = latest.version + 1;
+
+    insert_new_version_row(
+        tx,
+        new_id,
+        title,
+        description,
+        servings,
+        notes,
+        new_version,
+        group_id,
+        now,
+    )
+    .await?;
+
+    if !has_new_ingredients {
+        copy_ingredients(tx, new_id, latest.id).await?;
+    }
+    if !has_new_steps {
+        copy_steps(tx, new_id, latest.id).await?;
+    }
+
+    tracing::info!(recipe_id = %new_id, version = new_version, group = %group_id, "new recipe version created via MCP");
+    Ok(new_id)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn update_recipe_in_place(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    latest_id: Uuid,
+    title: &str,
+    description: Option<&str>,
+    servings: i32,
+    notes: Option<&str>,
+    has_new_ingredients: bool,
+    has_new_steps: bool,
+    now: time::OffsetDateTime,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "UPDATE recipes SET title = $1, description = $2, base_servings = $3, notes = $4, updated_at = $5 WHERE id = $6",
+    )
+    .bind(title)
+    .bind(description)
+    .bind(servings)
+    .bind(notes)
+    .bind(now)
+    .bind(latest_id)
+    .execute(&mut **tx)
+    .await?;
+
+    if has_new_ingredients {
+        sqlx::query("DELETE FROM recipe_ingredients WHERE recipe_id = $1")
+            .bind(latest_id)
+            .execute(&mut **tx)
+            .await?;
+    }
+    if has_new_steps {
+        sqlx::query("DELETE FROM recipe_steps WHERE recipe_id = $1")
+            .bind(latest_id)
+            .execute(&mut **tx)
+            .await?;
+    }
+
+    tracing::info!(recipe_id = %latest_id, "recipe updated in place via MCP");
+    Ok(())
+}
+
+async fn insert_recipe_ingredients(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    target_id: Uuid,
+    ingredients: &[IngredientParam],
+) -> Result<(), AppError> {
+    for (i, ing) in ingredients.iter().enumerate() {
+        let unit = parse_unit(&ing.unit).unwrap_or(UnitType::None);
+        let linked_id: Option<Uuid> = ing.linked_recipe_id.as_deref().and_then(|s| s.parse().ok());
+        sqlx::query(
+            "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(target_id)
+        .bind(&ing.id)
+        .bind(&ing.name)
+        .bind(&ing.short_name)
+        .bind(rust_decimal::Decimal::try_from(ing.amount).unwrap_or_default())
+        .bind(unit)
+        .bind(i as i32)
+        .bind(linked_id)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn insert_recipe_steps(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    target_id: Uuid,
+    steps: &[StepParam],
+) -> Result<(), AppError> {
+    for (i, step) in steps.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order)
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(target_id)
+        .bind(&step.id)
+        .bind(&step.title)
+        .bind(&step.content)
+        .bind(step.timer_seconds)
+        .bind(i as i32)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
 async fn update_recipe(
     state: &AppState,
     _user: &shared::types::UserContext,
@@ -728,161 +968,60 @@ async fn update_recipe(
         .parse()
         .map_err(|_| AppError::BadRequest("invalid recipe_id UUID".into()))?;
 
-    // Find the recipe's version group, then get the latest version in that group
     let group_id: Uuid = sqlx::query_scalar("SELECT version_group_id FROM recipes WHERE id = $1")
         .bind(recipe_id)
         .fetch_optional(&state.db)
         .await?
         .ok_or(AppError::NotFound)?;
 
-    let (
-        latest_id,
-        latest_version,
-        current_title,
-        current_description,
-        current_servings,
-        current_notes,
-    ): (Uuid, i32, String, Option<String>, i32, Option<String>) = sqlx::query_as(
-        "SELECT id, version, title, description, base_servings, notes
-         FROM recipes WHERE version_group_id = $1
-         ORDER BY version DESC LIMIT 1",
-    )
-    .bind(group_id)
-    .fetch_one(&state.db)
-    .await?;
+    let latest = fetch_latest_recipe(&state.db, group_id).await?;
 
-    let final_title = params.title.as_deref().unwrap_or(&current_title);
+    let final_title = params.title.as_deref().unwrap_or(&latest.title);
     let final_description = params
         .description
         .as_deref()
-        .or(current_description.as_deref());
-    let final_servings = params.base_servings.unwrap_or(current_servings);
-    let final_notes = params.notes.as_deref().or(current_notes.as_deref());
+        .or(latest.description.as_deref());
+    let final_servings = params.base_servings.unwrap_or(latest.base_servings);
+    let final_notes = params.notes.as_deref().or(latest.notes.as_deref());
 
     let now = time::OffsetDateTime::now_utc();
     let mut tx = state.db.begin().await?;
 
     let target_id = if params.new_version {
-        // Create a new version row
-        let new_id = Uuid::new_v4();
-        let new_version = latest_version + 1;
-
-        sqlx::query(
-            "INSERT INTO recipes (id, title, description, base_servings, notes, source, version, version_group_id, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)",
+        create_new_recipe_version(
+            &mut tx,
+            &latest,
+            group_id,
+            final_title,
+            final_description,
+            final_servings,
+            final_notes,
+            params.ingredients.is_some(),
+            params.steps.is_some(),
+            now,
         )
-        .bind(new_id)
-        .bind(final_title)
-        .bind(final_description)
-        .bind(final_servings)
-        .bind(final_notes)
-        .bind(RecipeSource::Claude)
-        .bind(new_version)
-        .bind(group_id)
-        .bind(now)
-        .execute(&mut *tx)
-        .await?;
-
-        // Copy ingredients from latest version if not replaced
-        if params.ingredients.is_none() {
-            sqlx::query(
-                "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
-                 SELECT $1, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id
-                 FROM recipe_ingredients WHERE recipe_id = $2 ORDER BY sort_order",
-            )
-            .bind(new_id)
-            .bind(latest_id)
-            .execute(&mut *tx)
-            .await?;
-        }
-
-        // Copy steps from latest version if not replaced
-        if params.steps.is_none() {
-            sqlx::query(
-                "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order)
-                 SELECT $1, widget_id, title, content, timer_seconds, sort_order
-                 FROM recipe_steps WHERE recipe_id = $2 ORDER BY sort_order",
-            )
-            .bind(new_id)
-            .bind(latest_id)
-            .execute(&mut *tx)
-            .await?;
-        }
-
-        tracing::info!(recipe_id = %new_id, version = new_version, group = %group_id, "new recipe version created via MCP");
-        new_id
+        .await?
     } else {
-        // Update existing latest version in place
-        sqlx::query(
-            "UPDATE recipes SET title = $1, description = $2, base_servings = $3, notes = $4, updated_at = $5 WHERE id = $6",
+        update_recipe_in_place(
+            &mut tx,
+            latest.id,
+            final_title,
+            final_description,
+            final_servings,
+            final_notes,
+            params.ingredients.is_some(),
+            params.steps.is_some(),
+            now,
         )
-        .bind(final_title)
-        .bind(final_description)
-        .bind(final_servings)
-        .bind(final_notes)
-        .bind(now)
-        .bind(latest_id)
-        .execute(&mut *tx)
         .await?;
-
-        // Delete existing ingredients/steps if replacing
-        if params.ingredients.is_some() {
-            sqlx::query("DELETE FROM recipe_ingredients WHERE recipe_id = $1")
-                .bind(latest_id)
-                .execute(&mut *tx)
-                .await?;
-        }
-
-        if params.steps.is_some() {
-            sqlx::query("DELETE FROM recipe_steps WHERE recipe_id = $1")
-                .bind(latest_id)
-                .execute(&mut *tx)
-                .await?;
-        }
-
-        tracing::info!(recipe_id = %latest_id, "recipe updated in place via MCP");
-        latest_id
+        latest.id
     };
 
-    // Insert new ingredients if provided
     if let Some(ref ingredients) = params.ingredients {
-        for (i, ing) in ingredients.iter().enumerate() {
-            let unit = parse_unit(&ing.unit).unwrap_or(UnitType::None);
-            let linked_id: Option<Uuid> =
-                ing.linked_recipe_id.as_deref().and_then(|s| s.parse().ok());
-            sqlx::query(
-                "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-            )
-            .bind(target_id)
-            .bind(&ing.id)
-            .bind(&ing.name)
-            .bind(&ing.short_name)
-            .bind(rust_decimal::Decimal::try_from(ing.amount).unwrap_or_default())
-            .bind(unit)
-            .bind(i as i32)
-            .bind(linked_id)
-            .execute(&mut *tx)
-            .await?;
-        }
+        insert_recipe_ingredients(&mut tx, target_id, ingredients).await?;
     }
-
-    // Insert new steps if provided
     if let Some(ref steps) = params.steps {
-        for (i, step) in steps.iter().enumerate() {
-            sqlx::query(
-                "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order)
-                 VALUES ($1, $2, $3, $4, $5, $6)",
-            )
-            .bind(target_id)
-            .bind(&step.id)
-            .bind(&step.title)
-            .bind(&step.content)
-            .bind(step.timer_seconds)
-            .bind(i as i32)
-            .execute(&mut *tx)
-            .await?;
-        }
+        insert_recipe_steps(&mut tx, target_id, steps).await?;
     }
 
     tx.commit().await?;

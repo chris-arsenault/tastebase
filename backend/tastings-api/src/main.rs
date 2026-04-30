@@ -420,7 +420,42 @@ fn infer_mime(key: Option<&str>) -> Option<String> {
     }
 }
 
-#[allow(clippy::too_many_arguments, clippy::cognitive_complexity)]
+async fn record_processing_failure(db: &sqlx::PgPool, record_id: Uuid, error: &str) {
+    let _ = sqlx::query(
+        "UPDATE tastings SET status = 'error', processing_error = $2, updated_at = now() WHERE id = $1"
+    )
+    .bind(record_id)
+    .bind(format!("Failed to invoke processing: {error}"))
+    .execute(db)
+    .await;
+}
+
+fn processing_function_name() -> Option<String> {
+    std::env::var("PROCESSING_FUNCTION_NAME")
+        .ok()
+        .filter(|s| !s.is_empty())
+}
+
+async fn dispatch_processing_lambda(
+    function_name: &str,
+    payload: serde_json::Value,
+) -> Result<i32, String> {
+    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let lambda_client = aws_sdk_lambda::Client::new(&config);
+    let resp = lambda_client
+        .invoke()
+        .function_name(function_name)
+        .invocation_type(aws_sdk_lambda::types::InvocationType::Event)
+        .payload(aws_sdk_lambda::primitives::Blob::new(
+            serde_json::to_vec(&payload).unwrap_or_default(),
+        ))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(resp.status_code())
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn invoke_processing(
     db: &sqlx::PgPool,
     record_id: Uuid,
@@ -434,12 +469,9 @@ async fn invoke_processing(
     nutrition_image_mime_type: Option<String>,
     voice_mime_type: Option<String>,
 ) {
-    let function_name = match std::env::var("PROCESSING_FUNCTION_NAME") {
-        Ok(name) if !name.is_empty() => name,
-        _ => {
-            tracing::warn!(record_id = %record_id, "PROCESSING_FUNCTION_NAME not set, skipping");
-            return;
-        }
+    let Some(function_name) = processing_function_name() else {
+        tracing::warn!(record_id = %record_id, "PROCESSING_FUNCTION_NAME not set, skipping");
+        return;
     };
 
     let payload = serde_json::json!({
@@ -455,36 +487,15 @@ async fn invoke_processing(
         "force_voice": force_voice,
     });
 
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-    let lambda_client = aws_sdk_lambda::Client::new(&config);
-
-    let result = lambda_client
-        .invoke()
-        .function_name(&function_name)
-        .invocation_type(aws_sdk_lambda::types::InvocationType::Event)
-        .payload(aws_sdk_lambda::primitives::Blob::new(
-            serde_json::to_vec(&payload).unwrap_or_default(),
-        ))
-        .send()
-        .await;
-
-    match result {
-        Ok(resp) => {
-            tracing::info!(
-                record_id = %record_id,
-                status_code = resp.status_code(),
-                "processing Lambda invoked"
-            );
-        }
+    match dispatch_processing_lambda(&function_name, payload).await {
+        Ok(status_code) => tracing::info!(
+            record_id = %record_id,
+            status_code,
+            "processing Lambda invoked"
+        ),
         Err(e) => {
             tracing::error!(record_id = %record_id, error = %e, "failed to invoke processing Lambda");
-            let _ = sqlx::query(
-                "UPDATE tastings SET status = 'error', processing_error = $2, updated_at = now() WHERE id = $1"
-            )
-            .bind(record_id)
-            .bind(format!("Failed to invoke processing: {e}"))
-            .execute(db)
-            .await;
+            record_processing_failure(db, record_id, &e).await;
         }
     }
 }
