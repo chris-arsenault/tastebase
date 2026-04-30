@@ -300,6 +300,7 @@ fn slugify(title: &str) -> String {
         .join("-")
 }
 
+#[allow(clippy::cognitive_complexity)]
 async fn invalidate_recipe_og(recipe_id: Uuid, db: &sqlx::PgPool) {
     let distribution_id = match std::env::var("CLOUDFRONT_DISTRIBUTION_ID") {
         Ok(id) if !id.is_empty() => id,
@@ -395,6 +396,7 @@ async fn submit_voice_review(
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
+#[allow(clippy::cognitive_complexity)]
 async fn invoke_processing(recipe_id: Uuid, review_id: Uuid, voice_key: &str, voice_mime: &str) {
     let function_name = match std::env::var("PROCESSING_FUNCTION_NAME") {
         Ok(name) if !name.is_empty() => name,

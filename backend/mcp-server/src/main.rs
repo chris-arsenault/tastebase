@@ -66,6 +66,7 @@ async fn mcp_get() -> StatusCode {
 }
 
 // POST /mcp — all JSON-RPC messages from client
+#[allow(clippy::cognitive_complexity)]
 async fn mcp_post(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -422,6 +423,7 @@ fn update_recipe_tool_def() -> serde_json::Value {
     })
 }
 
+#[allow(clippy::cognitive_complexity)]
 async fn handle_tools_call(
     msg: McpMessage,
     state: &AppState,
@@ -715,6 +717,7 @@ struct UpdateRecipeParams {
     steps: Option<Vec<StepParam>>,
 }
 
+#[allow(clippy::cognitive_complexity)]
 async fn update_recipe(
     state: &AppState,
     _user: &shared::types::UserContext,

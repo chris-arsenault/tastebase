@@ -42,6 +42,7 @@ pub struct Ctx {
     bedrock_model_id: String,
 }
 
+#[allow(clippy::cognitive_complexity)]
 async fn handler(event: LambdaEvent<ProcessEvent>, ctx: &Ctx) -> Result<(), Error> {
     let payload = event.payload;
     let process_type = payload.process_type.as_deref().unwrap_or("tasting");
@@ -86,6 +87,7 @@ async fn handler(event: LambdaEvent<ProcessEvent>, ctx: &Ctx) -> Result<(), Erro
 
 // -- Tasting pipeline (existing) --
 
+#[allow(clippy::cognitive_complexity)]
 async fn process_tasting_pipeline(
     payload: &ProcessEvent,
     ctx: &Ctx,
@@ -158,6 +160,7 @@ async fn process_tasting_pipeline(
 
 // -- Recipe review pipeline (new, reuses voice transcription + LLM) --
 
+#[allow(clippy::cognitive_complexity)]
 async fn process_recipe_review(
     payload: &ProcessEvent,
     ctx: &Ctx,

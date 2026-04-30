@@ -1,9 +1,11 @@
-.PHONY: ci lint fmt typecheck terraform-fmt-check build deploy
+.PHONY: ci lint fmt typecheck test terraform-fmt-check build deploy
 
-ci: lint fmt typecheck terraform-fmt-check
+# Mirrors the shared workflow at chris-arsenault/ahara/.github/workflows/ci.yml.
+# Keep these targets in sync with that workflow.
+ci: lint fmt typecheck test terraform-fmt-check
 
 lint:
-	cd backend && cargo clippy -- -D warnings
+	cd backend && CARGO_TARGET_DIR=target-clippy cargo clippy --release -- -D warnings -W clippy::cognitive_complexity
 	cd frontend && pnpm exec eslint .
 
 fmt:
@@ -12,6 +14,10 @@ fmt:
 
 typecheck:
 	cd frontend && pnpm exec tsc --noEmit
+
+test:
+	cd backend && CARGO_TARGET_DIR=target-cov cargo test --release --lib
+	cd frontend && if pnpm exec vitest --help > /dev/null 2>&1; then pnpm exec vitest run; fi
 
 terraform-fmt-check:
 	terraform fmt -check -recursive infrastructure/terraform/

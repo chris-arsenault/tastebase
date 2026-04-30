@@ -420,7 +420,7 @@ fn infer_mime(key: Option<&str>) -> Option<String> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::cognitive_complexity)]
 async fn invoke_processing(
     db: &sqlx::PgPool,
     record_id: Uuid,
