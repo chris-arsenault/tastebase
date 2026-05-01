@@ -1,23 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
-const fileToBase64 = (blob: Blob): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () =>
-      resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () =>
-      reject(reader.error ?? new Error("FileReader failed"));
-    reader.readAsDataURL(blob);
-  });
-};
-
 export type RecorderControls = ReturnType<typeof useRecorder>;
 
 export function useRecorder(onError: (msg: string) => void) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState("");
-  const [audioBase64, setAudioBase64] = useState("");
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioMimeType, setAudioMimeType] = useState("");
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
@@ -37,9 +25,6 @@ export function useRecorder(onError: (msg: string) => void) {
     setAudioBlob(blob);
     setAudioMimeType(mimeType || "audio/webm");
     setAudioUrl(URL.createObjectURL(blob));
-    fileToBase64(blob)
-      .then((b64) => setAudioBase64(b64))
-      .catch(() => onError("Failed to encode audio."));
     stream.getTracks().forEach((track) => track.stop());
     setAudioStream(null);
   };
@@ -72,7 +57,6 @@ export function useRecorder(onError: (msg: string) => void) {
 
   const clear = () => {
     setAudioUrl("");
-    setAudioBase64("");
     setAudioBlob(null);
     setAudioMimeType("");
   };
@@ -80,7 +64,6 @@ export function useRecorder(onError: (msg: string) => void) {
   return {
     isRecording,
     audioUrl,
-    audioBase64,
     audioBlob,
     audioMimeType,
     start,

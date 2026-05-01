@@ -50,14 +50,14 @@ function useTastingMedia(
     ingredientsImageMimeType: ingredientsCamera.mimeType,
     nutritionImageBase64: nutritionCamera.base64,
     nutritionImageMimeType: nutritionCamera.mimeType,
-    audioBase64: recorder.audioBase64,
+    audioBlob: recorder.audioBlob,
     audioMimeType: recorder.audioMimeType,
   });
 
   const hasMedia =
     [productCamera, ingredientsCamera, nutritionCamera].some((c) =>
       Boolean(c.base64),
-    ) || Boolean(recorder.audioBase64);
+    ) || Boolean(recorder.audioBlob);
 
   return {
     productRef,
@@ -185,7 +185,7 @@ type TastingFormProps = {
     ingredientsImageMimeType: string;
     nutritionImageBase64: string;
     nutritionImageMimeType: string;
-    audioBase64: string;
+    audioBlob: Blob | null;
     audioMimeType: string;
   }) => void;
   onClose: () => void;

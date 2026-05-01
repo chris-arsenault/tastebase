@@ -1,4 +1,4 @@
-import { uploadTastingMedia } from "../api";
+import { uploadTastingBlob, uploadTastingMedia } from "../api";
 import type { CreateTastingInput, UpdateTastingMediaInput } from "../types";
 import type { FormState } from "./useTastings";
 
@@ -9,7 +9,7 @@ export type MediaData = {
   ingredientsImageMimeType: string;
   nutritionImageBase64: string;
   nutritionImageMimeType: string;
-  audioBase64: string;
+  audioBlob: Blob | null;
   audioMimeType: string;
 };
 
@@ -24,25 +24,30 @@ export type UploadedKeys = {
   voiceMimeType?: string;
 };
 
-type Slot = {
+type ImageSlot = {
   dataUrl: string;
   mimeType: string;
-  uploadType: "image" | "voice";
   fallbackMime: string;
 };
 
-const uploadSlot = async (
-  slot: Slot,
+const uploadImageSlot = async (
+  slot: ImageSlot,
   token: string,
 ): Promise<{ key?: string; mimeType?: string }> => {
   if (!slot.dataUrl) return {};
   const mime = slot.mimeType || slot.fallbackMime;
-  const key = await uploadTastingMedia(
-    slot.dataUrl,
-    mime,
-    slot.uploadType,
-    token,
-  );
+  const key = await uploadTastingMedia(slot.dataUrl, mime, "image", token);
+  return { key, mimeType: mime };
+};
+
+const uploadVoiceBlob = async (
+  blob: Blob | null,
+  mimeType: string,
+  token: string,
+): Promise<{ key?: string; mimeType?: string }> => {
+  if (!blob) return {};
+  const mime = mimeType || blob.type || "audio/webm";
+  const key = await uploadTastingBlob(blob, mime, "voice", token);
   return { key, mimeType: mime };
 };
 
@@ -51,42 +56,31 @@ export const uploadAllMedia = async (
   token: string,
 ): Promise<UploadedKeys> => {
   const [image, ingredients, nutrition, voice] = await Promise.all([
-    uploadSlot(
+    uploadImageSlot(
       {
         dataUrl: mediaData.imageBase64,
         mimeType: mediaData.imageMimeType,
-        uploadType: "image",
         fallbackMime: "image/jpeg",
       },
       token,
     ),
-    uploadSlot(
+    uploadImageSlot(
       {
         dataUrl: mediaData.ingredientsImageBase64,
         mimeType: mediaData.ingredientsImageMimeType,
-        uploadType: "image",
         fallbackMime: "image/jpeg",
       },
       token,
     ),
-    uploadSlot(
+    uploadImageSlot(
       {
         dataUrl: mediaData.nutritionImageBase64,
         mimeType: mediaData.nutritionImageMimeType,
-        uploadType: "image",
         fallbackMime: "image/jpeg",
       },
       token,
     ),
-    uploadSlot(
-      {
-        dataUrl: mediaData.audioBase64,
-        mimeType: mediaData.audioMimeType,
-        uploadType: "voice",
-        fallbackMime: "audio/webm",
-      },
-      token,
-    ),
+    uploadVoiceBlob(mediaData.audioBlob, mediaData.audioMimeType, token),
   ]);
   return {
     imageKey: image.key,

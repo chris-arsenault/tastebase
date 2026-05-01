@@ -14,8 +14,8 @@ const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
   return response.blob();
 };
 
-export const uploadTastingMedia = async (
-  dataUrl: string,
+export const uploadTastingBlob = async (
+  blob: Blob,
   contentType: string,
   uploadType: TastingUploadType,
   token: string,
@@ -34,7 +34,6 @@ export const uploadTastingMedia = async (
     key: string;
     publicUrl: string;
   };
-  const blob = await dataUrlToBlob(dataUrl);
   const put = await fetch(uploadUrl, {
     method: "PUT",
     body: blob,
@@ -42,6 +41,16 @@ export const uploadTastingMedia = async (
   });
   if (!put.ok) throw new Error("Failed to upload media");
   return key;
+};
+
+export const uploadTastingMedia = async (
+  dataUrl: string,
+  contentType: string,
+  uploadType: TastingUploadType,
+  token: string,
+): Promise<string> => {
+  const blob = await dataUrlToBlob(dataUrl);
+  return uploadTastingBlob(blob, contentType, uploadType, token);
 };
 
 export const fetchTastings = async (): Promise<TastingRecord[]> => {
