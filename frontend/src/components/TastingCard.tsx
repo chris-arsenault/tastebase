@@ -124,7 +124,7 @@ function CardFooter({
             </button>
           )}
           <button className="card-delete" onClick={onDelete} title="Delete">
-            \u00D7
+            {"\u00D7"}
           </button>
         </div>
       )}
