@@ -139,7 +139,7 @@
   background: var(--cream);
   border: 2px solid var(--char);
   border-radius: 8px;
-  min-width: 220px;
+  min-width: 240px;
   box-shadow: 0 8px 24px var(--shadow-warm);
   animation: fadeUp 0.2s ease;
   overflow: hidden;
@@ -198,6 +198,42 @@
 
 .menu-auth-form button {
   margin-top: 0.25rem;
+}
+
+.menu-auth-title {
+  color: var(--char);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.menu-auth-note {
+  color: var(--soot);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.menu-auth-setup-link {
+  color: var(--ember);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.menu-auth-setup-link:hover {
+  text-decoration: underline;
+}
+
+.menu-auth-secondary {
+  background: transparent;
+  color: var(--soot);
+  border: 1px solid var(--border-burnt);
+  box-shadow: none;
+}
+
+.menu-auth-secondary:hover {
+  background: var(--aged-paper);
+  transform: none;
+  box-shadow: none;
 }
 
 .menu-loading {

@@ -1,8 +1,18 @@
 import { useCallback, type SubmitEvent } from "react";
 import type { AuthState } from "../hooks/useAuth";
+import type { MfaSetupRedirect, SoftwareTokenMfaChallenge } from "../auth";
 import type { Filters, ProductType } from "../types";
 
 type AppSection = "tastings" | "recipes";
+type AuthSubmitHandler = (
+  event: SubmitEvent<HTMLFormElement>,
+  onError: (msg: string) => void,
+) => void;
+type AuthActions = {
+  signIn: AuthSubmitHandler;
+  confirmMfa: AuthSubmitHandler;
+  signOut: () => void;
+};
 
 const brandTaglines: Record<string, string> = {
   drink: "Drink Log",
@@ -10,51 +20,139 @@ const brandTaglines: Record<string, string> = {
   all: "Culinary Log",
 };
 
-function AuthMenu({
-  auth,
+function SignedInMenu({
+  username,
+  onSignOut,
+}: Readonly<{
+  username: string;
+  onSignOut: () => void;
+}>) {
+  return (
+    <>
+      <div className="menu-user">
+        <span className="menu-user-label">Signed in as</span>
+        <span className="menu-user-name">{username || "Taster"}</span>
+      </div>
+      <button className="menu-item" onClick={onSignOut}>
+        Sign out
+      </button>
+    </>
+  );
+}
+
+function SignInForm({
   onSignIn,
+  onError,
+}: Readonly<{
+  onSignIn: AuthSubmitHandler;
+  onError: (msg: string) => void;
+}>) {
+  return (
+    <form className="menu-auth-form" onSubmit={(e) => onSignIn(e, onError)}>
+      <input
+        name="username"
+        placeholder="Username"
+        required
+        autoComplete="username"
+      />
+      <input
+        name="password"
+        type="password"
+        placeholder="Password"
+        required
+        autoComplete="current-password"
+      />
+      <button type="submit">Sign in</button>
+    </form>
+  );
+}
+
+function MfaCodeForm({
+  challenge,
+  onConfirmMfa,
   onSignOut,
   onError,
 }: Readonly<{
-  auth: AuthState;
-  onSignIn: (
-    event: SubmitEvent<HTMLFormElement>,
-    onError: (msg: string) => void,
-  ) => void;
+  challenge: SoftwareTokenMfaChallenge;
+  onConfirmMfa: AuthSubmitHandler;
   onSignOut: () => void;
+  onError: (msg: string) => void;
+}>) {
+  return (
+    <form className="menu-auth-form" onSubmit={(e) => onConfirmMfa(e, onError)}>
+      <span className="menu-auth-title">{challenge.username}</span>
+      <input
+        name="mfaCode"
+        placeholder="6-digit code"
+        required
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={6}
+      />
+      <button type="submit">Verify</button>
+      <button type="button" className="menu-auth-secondary" onClick={onSignOut}>
+        Start over
+      </button>
+    </form>
+  );
+}
+
+function MfaSetupRedirectPanel({
+  redirect,
+  onSignOut,
+}: Readonly<{
+  redirect: MfaSetupRedirect;
+  onSignOut: () => void;
+}>) {
+  return (
+    <div className="menu-auth-form">
+      <span className="menu-auth-title">MFA setup required</span>
+      <span className="menu-auth-note">
+        Enroll an authenticator in Ahara Business, then return to sign in.
+      </span>
+      <a className="menu-auth-setup-link" href={redirect.enrollmentUrl}>
+        Open Ahara Business
+      </a>
+      <button type="button" className="menu-auth-secondary" onClick={onSignOut}>
+        Return to sign in
+      </button>
+    </div>
+  );
+}
+
+function AuthMenu({
+  auth,
+  authActions,
+  onError,
+}: Readonly<{
+  auth: AuthState;
+  authActions: AuthActions;
   onError: (msg: string) => void;
 }>) {
   if (auth.status === "signedIn") {
     return (
-      <>
-        <div className="menu-user">
-          <span className="menu-user-label">Signed in as</span>
-          <span className="menu-user-name">{auth.username || "Taster"}</span>
-        </div>
-        <button className="menu-item" onClick={onSignOut}>
-          Sign out
-        </button>
-      </>
+      <SignedInMenu username={auth.username} onSignOut={authActions.signOut} />
     );
   }
   if (auth.status === "signedOut") {
+    return <SignInForm onSignIn={authActions.signIn} onError={onError} />;
+  }
+  if (auth.mfaChallenge?.kind === "softwareTokenMfa") {
     return (
-      <form className="menu-auth-form" onSubmit={(e) => onSignIn(e, onError)}>
-        <input
-          name="username"
-          placeholder="Username"
-          required
-          autoComplete="username"
-        />
-        <input
-          name="password"
-          type="password"
-          placeholder="Password"
-          required
-          autoComplete="current-password"
-        />
-        <button type="submit">Sign in</button>
-      </form>
+      <MfaCodeForm
+        challenge={auth.mfaChallenge}
+        onConfirmMfa={authActions.confirmMfa}
+        onSignOut={authActions.signOut}
+        onError={onError}
+      />
+    );
+  }
+  if (auth.mfaSetupRedirect) {
+    return (
+      <MfaSetupRedirectPanel
+        redirect={auth.mfaSetupRedirect}
+        onSignOut={authActions.signOut}
+      />
     );
   }
   return <div className="menu-loading">Loading...</div>;
@@ -128,8 +226,7 @@ function HeaderActions({
   menu,
   onAdd,
   onCloseForm,
-  onSignIn,
-  onSignOut,
+  authActions,
   onError,
 }: Readonly<{
   auth: AuthState;
@@ -138,11 +235,7 @@ function HeaderActions({
   menu: MenuState;
   onAdd: () => void;
   onCloseForm: () => void;
-  onSignIn: (
-    event: SubmitEvent<HTMLFormElement>,
-    onError: (msg: string) => void,
-  ) => void;
-  onSignOut: () => void;
+  authActions: AuthActions;
   onError: (msg: string) => void;
 }>) {
   return (
@@ -170,12 +263,7 @@ function HeaderActions({
         </button>
         {menu.open && (
           <div className="menu-dropdown">
-            <AuthMenu
-              auth={auth}
-              onSignIn={onSignIn}
-              onSignOut={onSignOut}
-              onError={onError}
-            />
+            <AuthMenu auth={auth} authActions={authActions} onError={onError} />
           </div>
         )}
       </div>
@@ -193,11 +281,7 @@ type HeaderProps = {
   menu: MenuState;
   onAdd: () => void;
   onCloseForm: () => void;
-  onSignIn: (
-    event: SubmitEvent<HTMLFormElement>,
-    onError: (msg: string) => void,
-  ) => void;
-  onSignOut: () => void;
+  authActions: AuthActions;
   onError: (msg: string) => void;
 };
 
@@ -211,8 +295,7 @@ export function Header({
   menu,
   onAdd,
   onCloseForm,
-  onSignIn,
-  onSignOut,
+  authActions,
   onError,
 }: Readonly<HeaderProps>) {
   const setProductType = useCallback(
@@ -246,8 +329,7 @@ export function Header({
         menu={menu}
         onAdd={onAdd}
         onCloseForm={onCloseForm}
-        onSignIn={onSignIn}
-        onSignOut={onSignOut}
+        authActions={authActions}
         onError={onError}
       />
     </header>

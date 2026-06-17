@@ -291,9 +291,8 @@ function AppFooter() {
 }
 
 const App = () => {
-  const { auth, menuOpen, setMenuOpen, handleSignIn, handleSignOut } =
-    useAuth();
-  const tastings = useTastings(auth);
+  const authHook = useAuth();
+  const tastings = useTastings(authHook.auth);
   const {
     filters,
     setFilters,
@@ -310,8 +309,8 @@ const App = () => {
     handleBackToRecipes,
   } = useRouter(recipesHook.recipes);
   const menu = useMemo(
-    () => ({ open: menuOpen, setOpen: setMenuOpen }),
-    [menuOpen, setMenuOpen],
+    () => ({ open: authHook.menuOpen, setOpen: authHook.setMenuOpen }),
+    [authHook.menuOpen, authHook.setMenuOpen],
   );
   const handleRecipeDeleted = useCallback(() => {
     recipesHook.reload();
@@ -321,7 +320,7 @@ const App = () => {
   return (
     <div className={`app ${themeClass[filters.productType] ?? "theme-sauce"}`}>
       <Header
-        auth={auth}
+        auth={authHook.auth}
         filters={filters}
         setFilters={setFilters}
         section={section}
@@ -330,8 +329,7 @@ const App = () => {
         menu={menu}
         onAdd={tastings.openAddForm}
         onCloseForm={tastings.closeForm}
-        onSignIn={handleSignIn}
-        onSignOut={handleSignOut}
+        authActions={authHook.authActions}
         onError={tastings.setErrorMessage}
       />
       {section === "tastings" && (
@@ -342,7 +340,7 @@ const App = () => {
           filteredTastings={filteredTastings}
           activeFilterCount={activeFilterCount}
           resetFilters={resetFilters}
-          auth={auth}
+          auth={authHook.auth}
         />
       )}
       {section === "recipes" && !selectedRecipe && (
@@ -355,7 +353,7 @@ const App = () => {
         <RecipeDetail
           key={selectedRecipe.id}
           recipeId={selectedRecipe.id}
-          token={auth.token}
+          token={authHook.auth.token}
           onClose={handleBackToRecipes}
           onDeleted={handleRecipeDeleted}
         />
