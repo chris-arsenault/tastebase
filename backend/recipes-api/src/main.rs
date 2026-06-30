@@ -1,3 +1,4 @@
+use ahara_lambda_telemetry::{Operation, OperationKind, TelemetryConfig};
 use axum::extract::{Path, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -10,72 +11,98 @@ use shared::types::{
 };
 use uuid::Uuid;
 
-async fn list_recipes(State(state): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
-    let rows: Vec<RecipeWithThumb> = sqlx::query_as(
-        "SELECT r.*, ri.image_url AS thumbnail_url, rv.score AS latest_score
-         FROM recipes r
-         INNER JOIN (
-           SELECT version_group_id, MAX(version) AS max_v FROM recipes GROUP BY version_group_id
-         ) latest ON r.version_group_id = latest.version_group_id AND r.version = latest.max_v
-         LEFT JOIN LATERAL (
-           SELECT image_url FROM recipe_images WHERE recipe_id = r.id ORDER BY created_at DESC LIMIT 1
-         ) ri ON true
-         LEFT JOIN LATERAL (
-           SELECT score FROM recipe_reviews WHERE recipe_id = r.id AND status = 'complete' ORDER BY created_at DESC LIMIT 1
-         ) rv ON true
-         ORDER BY r.created_at DESC",
-    )
-    .fetch_all(&state.db)
-    .await?;
+const SERVICE_NAME: &str = "tastebase-recipes-api";
 
-    tracing::info!(count = rows.len(), "recipes listed");
-    Ok(Json(serde_json::json!({ "data": rows })))
+fn recipe_operation(state: &AppState, name: &'static str) -> Operation {
+    Operation::new(state.telemetry.clone(), name).with_domain("tastebase.recipes")
+}
+
+fn aws_operation(
+    telemetry: &TelemetryConfig,
+    name: &'static str,
+    domain: &'static str,
+) -> Operation {
+    Operation::new(telemetry.clone(), name)
+        .with_domain(domain)
+        .with_kind(OperationKind::Background)
+}
+
+async fn list_recipes(State(state): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
+    recipe_operation(&state, "tastebase.recipes.list")
+        .observe(async move {
+            let rows: Vec<RecipeWithThumb> = sqlx::query_as(
+                "SELECT r.*, ri.image_url AS thumbnail_url, rv.score AS latest_score
+                 FROM recipes r
+                 INNER JOIN (
+                   SELECT version_group_id, MAX(version) AS max_v FROM recipes GROUP BY version_group_id
+                 ) latest ON r.version_group_id = latest.version_group_id AND r.version = latest.max_v
+                 LEFT JOIN LATERAL (
+                   SELECT image_url FROM recipe_images WHERE recipe_id = r.id ORDER BY created_at DESC LIMIT 1
+                 ) ri ON true
+                 LEFT JOIN LATERAL (
+                   SELECT score FROM recipe_reviews WHERE recipe_id = r.id AND status = 'complete' ORDER BY created_at DESC LIMIT 1
+                 ) rv ON true
+                 ORDER BY r.created_at DESC",
+            )
+            .fetch_all(&state.db)
+            .await?;
+
+            tracing::info!(count = rows.len(), "recipes listed");
+            Ok(Json(serde_json::json!({ "data": rows })))
+        })
+        .await
 }
 
 async fn get_recipe(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let recipe: Recipe = sqlx::query_as("SELECT * FROM recipes WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or(AppError::NotFound)?;
+    recipe_operation(&state, "tastebase.recipes.get")
+        .with_detail("recipe.id", id.to_string())
+        .observe(async move {
+            let recipe: Recipe = sqlx::query_as("SELECT * FROM recipes WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&state.db)
+                .await?
+                .ok_or(AppError::NotFound)?;
 
-    let ingredients: Vec<RecipeIngredient> =
-        sqlx::query_as("SELECT * FROM recipe_ingredients WHERE recipe_id = $1 ORDER BY sort_order")
+            let ingredients: Vec<RecipeIngredient> = sqlx::query_as(
+                "SELECT * FROM recipe_ingredients WHERE recipe_id = $1 ORDER BY sort_order",
+            )
             .bind(id)
             .fetch_all(&state.db)
             .await?;
 
-    let steps: Vec<RecipeStep> =
-        sqlx::query_as("SELECT * FROM recipe_steps WHERE recipe_id = $1 ORDER BY sort_order")
+            let steps: Vec<RecipeStep> =
+                sqlx::query_as("SELECT * FROM recipe_steps WHERE recipe_id = $1 ORDER BY sort_order")
+                    .bind(id)
+                    .fetch_all(&state.db)
+                    .await?;
+
+            let reviews: Vec<RecipeReview> = sqlx::query_as(
+                "SELECT * FROM recipe_reviews WHERE recipe_id = $1 ORDER BY created_at DESC",
+            )
             .bind(id)
             .fetch_all(&state.db)
             .await?;
 
-    let reviews: Vec<RecipeReview> = sqlx::query_as(
-        "SELECT * FROM recipe_reviews WHERE recipe_id = $1 ORDER BY created_at DESC",
-    )
-    .bind(id)
-    .fetch_all(&state.db)
-    .await?;
+            let images: Vec<RecipeImage> =
+                sqlx::query_as("SELECT * FROM recipe_images WHERE recipe_id = $1 ORDER BY created_at")
+                    .bind(id)
+                    .fetch_all(&state.db)
+                    .await?;
 
-    let images: Vec<RecipeImage> =
-        sqlx::query_as("SELECT * FROM recipe_images WHERE recipe_id = $1 ORDER BY created_at")
-            .bind(id)
-            .fetch_all(&state.db)
-            .await?;
-
-    tracing::info!(recipe_id = %id, ingredients = ingredients.len(), steps = steps.len(), reviews = reviews.len(), images = images.len(), "recipe fetched");
-    let full = RecipeFull {
-        recipe,
-        ingredients,
-        steps,
-        reviews,
-        images,
-    };
-    Ok(Json(serde_json::json!({ "data": full })))
+            tracing::info!(recipe_id = %id, ingredients = ingredients.len(), steps = steps.len(), reviews = reviews.len(), images = images.len(), "recipe fetched");
+            let full = RecipeFull {
+                recipe,
+                ingredients,
+                steps,
+                reviews,
+                images,
+            };
+            Ok(Json(serde_json::json!({ "data": full })))
+        })
+        .await
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,103 +142,118 @@ async fn create_recipe(
     State(state): State<AppState>,
     Json(input): Json<CreateRecipeInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    tracing::info!(title = %input.title, "creating recipe");
+    let operation = recipe_operation(&state, "tastebase.recipes.create")
+        .with_detail("recipe.ingredients_count", input.ingredients.len() as u64)
+        .with_detail("recipe.steps_count", input.steps.len() as u64)
+        .with_detail("recipe.source_provided", input.source.is_some())
+        .with_detail("recipe.source_meta", input.source_meta.is_some());
 
-    shared::validate::validate_recipe_input(
-        &input.title,
-        input.description.as_deref(),
-        input.base_servings,
-        input.notes.as_deref(),
-    )?;
+    operation
+        .observe(async move {
+            tracing::info!("creating recipe");
 
-    let title = shared::sanitize::clean(&input.title);
-    let description = shared::sanitize::clean_option(input.description.as_deref());
-    let notes = shared::sanitize::clean_option(input.notes.as_deref());
+            shared::validate::validate_recipe_input(
+                &input.title,
+                input.description.as_deref(),
+                input.base_servings,
+                input.notes.as_deref(),
+            )?;
 
-    let recipe_id = Uuid::new_v4();
-    let now = time::OffsetDateTime::now_utc();
-    let source = input.source.unwrap_or(RecipeSource::Manual);
+            let title = shared::sanitize::clean(&input.title);
+            let description = shared::sanitize::clean_option(input.description.as_deref());
+            let notes = shared::sanitize::clean_option(input.notes.as_deref());
 
-    let mut tx = state.db.begin().await?;
+            let recipe_id = Uuid::new_v4();
+            let now = time::OffsetDateTime::now_utc();
+            let source = input.source.unwrap_or(RecipeSource::Manual);
 
-    sqlx::query(
-        "INSERT INTO recipes (id, title, description, base_servings, notes, source, source_meta, version, version_group_id, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $1, $8, $8)",
-    )
-    .bind(recipe_id)
-    .bind(&title)
-    .bind(&description)
-    .bind(input.base_servings)
-    .bind(&notes)
-    .bind(source)
-    .bind(input.source_meta.as_ref().map(sqlx::types::Json))
-    .bind(now)
-    .execute(&mut *tx)
-    .await?;
+            let mut tx = state.db.begin().await?;
 
-    for (i, ing) in input.ingredients.iter().enumerate() {
-        let unit = ing.unit.unwrap_or(UnitType::None);
-        let name = shared::sanitize::clean(&ing.name);
-        let short_name = shared::sanitize::clean_or_empty(ing.short_name.as_deref());
-        sqlx::query(
-            "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-        )
-        .bind(recipe_id)
-        .bind(&ing.id)
-        .bind(&name)
-        .bind(&short_name)
-        .bind(rust_decimal::Decimal::try_from(ing.amount).unwrap_or_default())
-        .bind(unit)
-        .bind(i as i32)
-        .bind(ing.linked_recipe_id)
-        .execute(&mut *tx)
-        .await?;
-    }
+            sqlx::query(
+                "INSERT INTO recipes (id, title, description, base_servings, notes, source, source_meta, version, version_group_id, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $1, $8, $8)",
+            )
+            .bind(recipe_id)
+            .bind(&title)
+            .bind(&description)
+            .bind(input.base_servings)
+            .bind(&notes)
+            .bind(source)
+            .bind(input.source_meta.as_ref().map(sqlx::types::Json))
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
 
-    for (i, step) in input.steps.iter().enumerate() {
-        let step_title = shared::sanitize::clean(&step.title);
-        let content = shared::sanitize::clean(&step.content);
-        sqlx::query(
-            "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order)
-             VALUES ($1, $2, $3, $4, $5, $6)",
-        )
-        .bind(recipe_id)
-        .bind(&step.id)
-        .bind(&step_title)
-        .bind(&content)
-        .bind(step.timer_seconds)
-        .bind(i as i32)
-        .execute(&mut *tx)
-        .await?;
-    }
+            for (i, ing) in input.ingredients.iter().enumerate() {
+                let unit = ing.unit.unwrap_or(UnitType::None);
+                let name = shared::sanitize::clean(&ing.name);
+                let short_name = shared::sanitize::clean_or_empty(ing.short_name.as_deref());
+                sqlx::query(
+                    "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                )
+                .bind(recipe_id)
+                .bind(&ing.id)
+                .bind(&name)
+                .bind(&short_name)
+                .bind(rust_decimal::Decimal::try_from(ing.amount).unwrap_or_default())
+                .bind(unit)
+                .bind(i as i32)
+                .bind(ing.linked_recipe_id)
+                .execute(&mut *tx)
+                .await?;
+            }
 
-    tx.commit().await?;
+            for (i, step) in input.steps.iter().enumerate() {
+                let step_title = shared::sanitize::clean(&step.title);
+                let content = shared::sanitize::clean(&step.content);
+                sqlx::query(
+                    "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order)
+                     VALUES ($1, $2, $3, $4, $5, $6)",
+                )
+                .bind(recipe_id)
+                .bind(&step.id)
+                .bind(&step_title)
+                .bind(&content)
+                .bind(step.timer_seconds)
+                .bind(i as i32)
+                .execute(&mut *tx)
+                .await?;
+            }
 
-    tracing::info!(recipe_id = %recipe_id, source = ?source, "recipe created");
+            tx.commit().await?;
 
-    let url = format!("https://tastebase.ahara.io/recipes/{recipe_id}");
-    Ok(Json(serde_json::json!({
-        "recipe_id": recipe_id,
-        "url": url,
-        "message": "Saved. View at the link above."
-    })))
+            tracing::info!(recipe_id = %recipe_id, source = ?source, "recipe created");
+
+            let url = format!("https://tastebase.ahara.io/recipes/{recipe_id}");
+            Ok(Json(serde_json::json!({
+                "recipe_id": recipe_id,
+                "url": url,
+                "message": "Saved. View at the link above."
+            })))
+        })
+        .await
 }
 
 async fn delete_recipe(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    let result = sqlx::query("DELETE FROM recipes WHERE id = $1")
-        .bind(id)
-        .execute(&state.db)
-        .await?;
+    recipe_operation(&state, "tastebase.recipes.delete")
+        .with_detail("recipe.id", id.to_string())
+        .observe(async move {
+            let result = sqlx::query("DELETE FROM recipes WHERE id = $1")
+                .bind(id)
+                .execute(&state.db)
+                .await?;
 
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound);
-    }
-    tracing::info!(recipe_id = %id, "recipe deleted");
-    Ok(axum::http::StatusCode::NO_CONTENT)
+            if result.rows_affected() == 0 {
+                return Err(AppError::NotFound);
+            }
+            tracing::info!(recipe_id = %id, "recipe deleted");
+            Ok(axum::http::StatusCode::NO_CONTENT)
+        })
+        .await
 }
 
 // -- Upload URL endpoint: returns presigned S3 PUT URLs --
@@ -228,36 +270,56 @@ async fn get_upload_url(
     Path(recipe_id): Path<Uuid>,
     Json(input): Json<UploadUrlInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM recipes WHERE id = $1")
-        .bind(recipe_id)
-        .fetch_optional(&state.db)
-        .await?;
-    if exists.is_none() {
-        return Err(AppError::NotFound);
-    }
+    let content_type = input
+        .content_type
+        .split(';')
+        .next()
+        .unwrap_or(&input.content_type)
+        .trim()
+        .to_string();
+    let operation = recipe_operation(&state, "tastebase.recipes.presign_upload")
+        .with_detail("recipe.id", recipe_id.to_string())
+        .with_detail("upload.type", input.upload_type.clone())
+        .with_detail("media.content_type", content_type.clone());
 
-    let ext = input.content_type.split('/').nth(1).unwrap_or("bin");
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let prefix = match input.upload_type.as_str() {
-        "voice" => "recipe-voice",
-        _ => "recipe-images",
-    };
-    let key = format!("{prefix}/{recipe_id}-{ts}.{ext}");
+    operation
+        .observe(async move {
+            let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM recipes WHERE id = $1")
+                .bind(recipe_id)
+                .fetch_optional(&state.db)
+                .await?;
+            if exists.is_none() {
+                return Err(AppError::NotFound);
+            }
 
-    let (presigned_url, public_url) =
-        shared::media::presign_upload(&state.s3, &state.media_bucket, &key, &input.content_type)
+            let ext = content_type.split('/').nth(1).unwrap_or("bin");
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let prefix = match input.upload_type.as_str() {
+                "voice" => "recipe-voice",
+                _ => "recipe-images",
+            };
+            let key = format!("{prefix}/{recipe_id}-{ts}.{ext}");
+
+            let (presigned_url, public_url) = shared::media::presign_upload(
+                &state.s3,
+                &state.media_bucket,
+                &key,
+                &input.content_type,
+            )
             .await?;
 
-    tracing::info!(recipe_id = %recipe_id, upload_type = %input.upload_type, key = %key, "presigned URL generated");
+            tracing::info!(recipe_id = %recipe_id, upload_type = %input.upload_type, "presigned URL generated");
 
-    Ok(Json(serde_json::json!({
-        "uploadUrl": presigned_url,
-        "key": key,
-        "publicUrl": public_url
-    })))
+            Ok(Json(serde_json::json!({
+                "uploadUrl": presigned_url,
+                "key": key,
+                "publicUrl": public_url
+            })))
+        })
+        .await
 }
 
 // -- Confirm upload: register the uploaded file in the DB --
@@ -274,18 +336,25 @@ async fn confirm_image(
     Path(recipe_id): Path<Uuid>,
     Json(input): Json<ConfirmImageInput>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    sqlx::query("INSERT INTO recipe_images (recipe_id, image_url, image_key) VALUES ($1, $2, $3)")
-        .bind(recipe_id)
-        .bind(&input.public_url)
-        .bind(&input.key)
-        .execute(&state.db)
-        .await?;
+    recipe_operation(&state, "tastebase.recipes.confirm_image")
+        .with_detail("recipe.id", recipe_id.to_string())
+        .observe(async move {
+            sqlx::query(
+                "INSERT INTO recipe_images (recipe_id, image_url, image_key) VALUES ($1, $2, $3)",
+            )
+            .bind(recipe_id)
+            .bind(&input.public_url)
+            .bind(&input.key)
+            .execute(&state.db)
+            .await?;
 
-    tracing::info!(recipe_id = %recipe_id, key = %input.key, "recipe image confirmed");
+            tracing::info!(recipe_id = %recipe_id, "recipe image confirmed");
 
-    invalidate_recipe_og(recipe_id, &state.db).await;
+            invalidate_recipe_og(recipe_id, &state).await;
 
-    Ok(axum::http::StatusCode::NO_CONTENT)
+            Ok(axum::http::StatusCode::NO_CONTENT)
+        })
+        .await
 }
 
 fn slugify(title: &str) -> String {
@@ -331,41 +400,61 @@ fn build_invalidation_batch(
 }
 
 async fn submit_cloudfront_invalidation(
+    telemetry: &TelemetryConfig,
     distribution_id: &str,
     batch: aws_sdk_cloudfront::types::InvalidationBatch,
     path: &str,
-) {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-    let client = aws_sdk_cloudfront::Client::new(&config);
-    match client
-        .create_invalidation()
-        .distribution_id(distribution_id)
-        .invalidation_batch(batch)
-        .send()
-        .await
-    {
-        Ok(_) => tracing::info!(path = %path, "CloudFront OG invalidation created"),
-        Err(e) => tracing::error!(path = %path, error = %e, "failed to invalidate CloudFront"),
-    }
+) -> Result<(), String> {
+    aws_operation(
+        telemetry,
+        "tastebase.recipes.cloudfront_invalidation",
+        "aws.cloudfront",
+    )
+    .with_detail("cloudfront.path", path.to_string())
+    .observe(async move {
+        let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+        let client = aws_sdk_cloudfront::Client::new(&config);
+        client
+            .create_invalidation()
+            .distribution_id(distribution_id)
+            .invalidation_batch(batch)
+            .send()
+            .await
+            .map(|_| {
+                tracing::info!(path = %path, "CloudFront OG invalidation created");
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
-async fn invalidate_recipe_og(recipe_id: Uuid, db: &sqlx::PgPool) {
-    let distribution_id = std::env::var("CLOUDFRONT_DISTRIBUTION_ID")
-        .ok()
-        .filter(|s| !s.is_empty());
-    let Some(distribution_id) = distribution_id else {
-        tracing::warn!("CLOUDFRONT_DISTRIBUTION_ID not set, skipping invalidation");
-        return;
-    };
+async fn invalidate_recipe_og(recipe_id: Uuid, state: &AppState) {
+    let result = recipe_operation(state, "tastebase.recipes.invalidate_og")
+        .with_kind(OperationKind::Background)
+        .with_detail("recipe.id", recipe_id.to_string())
+        .observe(async {
+            let distribution_id = std::env::var("CLOUDFRONT_DISTRIBUTION_ID")
+                .ok()
+                .filter(|s| !s.is_empty());
+            let Some(distribution_id) = distribution_id else {
+                tracing::warn!("CLOUDFRONT_DISTRIBUTION_ID not set, skipping invalidation");
+                return Ok(());
+            };
 
-    let Some(slug) = fetch_recipe_slug(db, recipe_id).await else {
-        tracing::warn!(recipe_id = %recipe_id, "recipe not found for OG invalidation");
-        return;
-    };
+            let Some(slug) = fetch_recipe_slug(&state.db, recipe_id).await else {
+                tracing::warn!(recipe_id = %recipe_id, "recipe not found for OG invalidation");
+                return Ok(());
+            };
 
-    let path = format!("/recipes/{slug}");
-    let batch = build_invalidation_batch(recipe_id, &path);
-    submit_cloudfront_invalidation(&distribution_id, batch, &path).await;
+            let path = format!("/recipes/{slug}");
+            let batch = build_invalidation_batch(recipe_id, &path);
+            submit_cloudfront_invalidation(&state.telemetry, &distribution_id, batch, &path).await
+        })
+        .await;
+
+    if let Err(e) = result {
+        tracing::error!(recipe_id = %recipe_id, error = %e, "failed to invalidate recipe OG");
+    }
 }
 
 // -- Submit voice review: register and trigger processing --
@@ -382,49 +471,77 @@ async fn submit_voice_review(
     Path(recipe_id): Path<Uuid>,
     Json(input): Json<SubmitVoiceReviewInput>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    let review_id = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO recipe_reviews (id, recipe_id, voice_key, status) VALUES ($1, $2, $3, 'pending')",
-    )
-    .bind(review_id)
-    .bind(recipe_id)
-    .bind(&input.key)
-    .execute(&state.db)
-    .await?;
-
-    tracing::info!(recipe_id = %recipe_id, review_id = %review_id, "voice review created");
-
     let mime = input
         .mime_type
         .split(';')
         .next()
         .unwrap_or(&input.mime_type)
-        .trim();
-    invoke_processing(recipe_id, review_id, &input.key, mime).await;
+        .trim()
+        .to_string();
 
-    Ok(axum::http::StatusCode::NO_CONTENT)
+    recipe_operation(&state, "tastebase.recipes.submit_voice_review")
+        .with_detail("recipe.id", recipe_id.to_string())
+        .with_detail("media.mime", mime.clone())
+        .observe(async move {
+            let review_id = Uuid::new_v4();
+            sqlx::query(
+                "INSERT INTO recipe_reviews (id, recipe_id, voice_key, status) VALUES ($1, $2, $3, 'pending')",
+            )
+            .bind(review_id)
+            .bind(recipe_id)
+            .bind(&input.key)
+            .execute(&state.db)
+            .await?;
+
+            tracing::info!(recipe_id = %recipe_id, review_id = %review_id, "voice review created");
+
+            invoke_processing(&state.telemetry, recipe_id, review_id, &input.key, &mime).await;
+
+            Ok(axum::http::StatusCode::NO_CONTENT)
+        })
+        .await
 }
 
 async fn dispatch_processing_lambda(
+    telemetry: &TelemetryConfig,
     function_name: &str,
     payload: serde_json::Value,
 ) -> Result<(), String> {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-    let client = aws_sdk_lambda::Client::new(&config);
-    client
-        .invoke()
-        .function_name(function_name)
-        .invocation_type(aws_sdk_lambda::types::InvocationType::Event)
-        .payload(aws_sdk_lambda::primitives::Blob::new(
-            serde_json::to_vec(&payload).unwrap_or_default(),
-        ))
-        .send()
+    let process_type = payload
+        .get("process_type")
+        .and_then(|value| value.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    aws_operation(telemetry, "tastebase.processing.invoke", "aws.lambda")
+        .with_detail("lambda.invocation_type", "event")
+        .with_detail("payload.process_type", process_type)
+        .with_detail("payload.voice", payload.get("voice_key").is_some())
+        .observe(async move {
+            let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+            let client = aws_sdk_lambda::Client::new(&config);
+            client
+                .invoke()
+                .function_name(function_name)
+                .invocation_type(aws_sdk_lambda::types::InvocationType::Event)
+                .payload(aws_sdk_lambda::primitives::Blob::new(
+                    serde_json::to_vec(&payload).unwrap_or_default(),
+                ))
+                .send()
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        })
         .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
 }
 
-async fn invoke_processing(recipe_id: Uuid, review_id: Uuid, voice_key: &str, voice_mime: &str) {
+async fn invoke_processing(
+    telemetry: &TelemetryConfig,
+    recipe_id: Uuid,
+    review_id: Uuid,
+    voice_key: &str,
+    voice_mime: &str,
+) {
     let function_name = std::env::var("PROCESSING_FUNCTION_NAME")
         .ok()
         .filter(|s| !s.is_empty());
@@ -441,7 +558,7 @@ async fn invoke_processing(recipe_id: Uuid, review_id: Uuid, voice_key: &str, vo
         "voice_mime_type": voice_mime,
     });
 
-    match dispatch_processing_lambda(&function_name, payload).await {
+    match dispatch_processing_lambda(telemetry, &function_name, payload).await {
         Ok(()) => tracing::info!(review_id = %review_id, "processing invoked"),
         Err(e) => {
             tracing::error!(review_id = %review_id, error = %e, "failed to invoke processing");
@@ -453,61 +570,76 @@ async fn delete_review(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    let result = sqlx::query("DELETE FROM recipe_reviews WHERE id = $1")
-        .bind(id)
-        .execute(&state.db)
-        .await?;
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound);
-    }
-    tracing::info!(review_id = %id, "review deleted");
-    Ok(axum::http::StatusCode::NO_CONTENT)
+    recipe_operation(&state, "tastebase.recipes.delete_review")
+        .with_detail("review.id", id.to_string())
+        .observe(async move {
+            let result = sqlx::query("DELETE FROM recipe_reviews WHERE id = $1")
+                .bind(id)
+                .execute(&state.db)
+                .await?;
+            if result.rows_affected() == 0 {
+                return Err(AppError::NotFound);
+            }
+            tracing::info!(review_id = %id, "review deleted");
+            Ok(axum::http::StatusCode::NO_CONTENT)
+        })
+        .await
 }
 
 async fn rerun_review(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    let row: Option<(Uuid, Uuid, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT id, recipe_id, voice_key, voice_key FROM recipe_reviews WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.db)
-    .await?;
+    recipe_operation(&state, "tastebase.recipes.rerun_review")
+        .with_detail("review.id", id.to_string())
+        .observe(async move {
+            let row: Option<(Uuid, Uuid, Option<String>, Option<String>)> = sqlx::query_as(
+                "SELECT id, recipe_id, voice_key, voice_key FROM recipe_reviews WHERE id = $1",
+            )
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?;
 
-    let (review_id, recipe_id, voice_key, _) = row.ok_or(AppError::NotFound)?;
-    let voice_key =
-        voice_key.ok_or_else(|| AppError::BadRequest("no voice data to reprocess".into()))?;
+            let (review_id, recipe_id, voice_key, _) = row.ok_or(AppError::NotFound)?;
+            let voice_key =
+                voice_key.ok_or_else(|| AppError::BadRequest("no voice data to reprocess".into()))?;
 
-    sqlx::query("UPDATE recipe_reviews SET status = 'pending', processing_error = NULL, updated_at = now() WHERE id = $1")
-        .bind(review_id)
-        .execute(&state.db)
-        .await?;
+            sqlx::query("UPDATE recipe_reviews SET status = 'pending', processing_error = NULL, updated_at = now() WHERE id = $1")
+                .bind(review_id)
+                .execute(&state.db)
+                .await?;
 
-    let mime = if voice_key.ends_with(".webm") {
-        "audio/webm"
-    } else {
-        "audio/mpeg"
-    };
-    invoke_processing(recipe_id, review_id, &voice_key, mime).await;
+            let mime = if voice_key.ends_with(".webm") {
+                "audio/webm"
+            } else {
+                "audio/mpeg"
+            };
+            invoke_processing(&state.telemetry, recipe_id, review_id, &voice_key, mime).await;
 
-    tracing::info!(review_id = %review_id, "review rerun triggered");
-    Ok(axum::http::StatusCode::NO_CONTENT)
+            tracing::info!(review_id = %review_id, "review rerun triggered");
+            Ok(axum::http::StatusCode::NO_CONTENT)
+        })
+        .await
 }
 
 async fn delete_image(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    let result = sqlx::query("DELETE FROM recipe_images WHERE id = $1")
-        .bind(id)
-        .execute(&state.db)
-        .await?;
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound);
-    }
-    tracing::info!(image_id = %id, "image deleted");
-    Ok(axum::http::StatusCode::NO_CONTENT)
+    recipe_operation(&state, "tastebase.recipes.delete_image")
+        .with_detail("image.id", id.to_string())
+        .observe(async move {
+            let result = sqlx::query("DELETE FROM recipe_images WHERE id = $1")
+                .bind(id)
+                .execute(&state.db)
+                .await?;
+            if result.rows_affected() == 0 {
+                return Err(AppError::NotFound);
+            }
+            tracing::info!(image_id = %id, "image deleted");
+            Ok(axum::http::StatusCode::NO_CONTENT)
+        })
+        .await
 }
 
 fn router(state: AppState) -> Router {
@@ -529,9 +661,10 @@ fn router(state: AppState) -> Router {
 
 #[tokio::main]
 async fn main() -> Result<(), lambda_http::Error> {
-    shared::init_tracing();
+    let telemetry = shared::telemetry_config(SERVICE_NAME);
+    ahara_lambda_telemetry::init_lambda_logging(&telemetry);
     tracing::info!("recipes-api starting");
-    let state = AppState::from_env().await;
+    let state = AppState::from_env(telemetry.clone()).await;
     let app = router(state);
-    lambda_http::run(app).await
+    ahara_lambda_telemetry::run_http_lambda(telemetry, app).await
 }

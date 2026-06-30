@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ahara-lambda-telemetry = { workspace = true }
 axum = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -11,7 +12,6 @@ sqlx = { workspace = true }
 uuid = { workspace = true }
 time = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 aws-config = { workspace = true }
 aws-sdk-s3 = { workspace = true }
 thiserror = { workspace = true }

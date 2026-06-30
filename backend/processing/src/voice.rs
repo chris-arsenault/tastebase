@@ -1,3 +1,4 @@
+use ahara_lambda_telemetry::{Operation, OperationKind};
 use aws_sdk_transcribe::types::MediaFormat;
 use regex::Regex;
 use uuid::Uuid;
@@ -29,6 +30,8 @@ pub async fn transcribe_voice(
     mime_type: &str,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let s3_uri = format!("s3://{}/{}", ctx.media_bucket, voice_key);
+    let media_format = map_media_format(mime_type);
+    let media_format_detail = media_format.as_str().to_string();
     let job_name = format!(
         "tastebase-{}-{}",
         std::time::SystemTime::now()
@@ -38,27 +41,35 @@ pub async fn transcribe_voice(
         &uuid::Uuid::new_v4().to_string()[..8]
     );
 
-    tracing::info!(job_name = %job_name, s3_uri = %s3_uri, "starting transcription");
+    Operation::new(ctx.telemetry.clone(), "tastebase.aws.transcribe")
+        .with_domain("aws.transcribe")
+        .with_kind(OperationKind::Background)
+        .with_detail("media.mime", mime_type.to_string())
+        .with_detail("media.format", media_format_detail)
+        .observe(async {
+            tracing::info!(job_name = %job_name, media_format = %media_format.as_str(), "starting transcription");
 
-    ctx.transcribe
-        .start_transcription_job()
-        .transcription_job_name(&job_name)
-        .language_code(
-            std::env::var("TRANSCRIBE_LANGUAGE")
-                .unwrap_or_else(|_| "en-US".into())
-                .as_str()
-                .into(),
-        )
-        .media(
-            aws_sdk_transcribe::types::Media::builder()
-                .media_file_uri(&s3_uri)
-                .build(),
-        )
-        .media_format(map_media_format(mime_type))
-        .send()
-        .await?;
+            ctx.transcribe
+                .start_transcription_job()
+                .transcription_job_name(&job_name)
+                .language_code(
+                    std::env::var("TRANSCRIBE_LANGUAGE")
+                        .unwrap_or_else(|_| "en-US".into())
+                        .as_str()
+                        .into(),
+                )
+                .media(
+                    aws_sdk_transcribe::types::Media::builder()
+                        .media_file_uri(&s3_uri)
+                        .build(),
+                )
+                .media_format(media_format)
+                .send()
+                .await?;
 
-    poll_transcription_job(ctx, &job_name).await
+            poll_transcription_job(ctx, &job_name).await
+        })
+        .await
 }
 
 /// Poll a Transcribe job until it completes, fails, or times out.
@@ -273,7 +284,14 @@ async fn run_notes_llm(
     let instructions = "Rewrite this transcript into a concise, professional tasting summary. Identify 2-6 salient categories that are actually mentioned (e.g., Aroma, Flavor, Sweetness, Acidity, Body, Carbonation, Spice/Heat, Balance, Aftertaste). Use category names that fit the product; do not invent or force categories. Return JSON only with key: tasting_notes_user as an object of category -> concise phrase. Keep each phrase under ~12 words. Remove numeric ratings or scores; do not include numbers like 8/10. Remove filler words like um/uh. If the transcript contains no tasting notes, return an empty object. Do not return nested objects or arrays.";
 
     let payload = build_text_prompt(instructions, transcript);
-    let text = invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await?;
+    let text = invoke_claude(
+        &ctx.telemetry,
+        &ctx.bedrock,
+        &ctx.bedrock_model_id,
+        &payload,
+        "tasting_notes_format",
+    )
+    .await?;
     let parsed = match parse_json_from_text(&text) {
         Some(p) => p,
         None => return Ok(String::new()),
@@ -459,7 +477,15 @@ pub async fn format_recipe_review(
          8. Return ONLY the cleaned review text. No preamble, no labels, no 'Here is the review'.";
 
     let payload = build_text_prompt(instructions, transcript);
-    match invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await {
+    match invoke_claude(
+        &ctx.telemetry,
+        &ctx.bedrock,
+        &ctx.bedrock_model_id,
+        &payload,
+        "recipe_review_format",
+    )
+    .await
+    {
         Ok(text) => {
             let trimmed = text.trim().to_string();
             if trimmed.is_empty() {

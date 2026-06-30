@@ -1,3 +1,4 @@
+use ahara_lambda_telemetry::Operation;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
@@ -10,7 +11,12 @@ use shared::error::AppError;
 use shared::types::{RecipeSource, UnitType};
 use uuid::Uuid;
 
+const SERVICE_NAME: &str = "tastebase-mcp-server";
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
+
+fn mcp_operation(state: &AppState, name: &'static str) -> Operation {
+    Operation::new(state.telemetry.clone(), name).with_domain("tastebase.mcp")
+}
 
 // -- Well-known metadata endpoints (unauthenticated) --
 
@@ -128,23 +134,42 @@ async fn mcp_post(
 ) -> axum::response::Response {
     let method = msg.method.clone();
     let is_notification = msg.id.is_none();
-    tracing::info!(method = %method, is_notification, "MCP request");
+    let operation = mcp_operation(&state, "tastebase.mcp.request")
+        .with_detail("mcp.method", method.clone())
+        .with_detail("mcp.notification", is_notification);
 
-    let user = match authenticate(&headers) {
-        Ok(u) => {
-            tracing::info!(user_sub = %u.sub, method = %method, "MCP auth OK");
-            u
+    match operation
+        .observe(async move {
+            tracing::info!(method = %method, is_notification, "MCP request");
+
+            let user = match authenticate(&headers) {
+                Ok(u) => {
+                    tracing::info!(user_sub = %u.sub, method = %method, "MCP auth OK");
+                    u
+                }
+                Err(e) => return Ok::<_, String>(unauthorized_response(&method, &e)),
+            };
+
+            if is_notification {
+                tracing::info!(method = %method, "notification acknowledged");
+                return Ok(StatusCode::ACCEPTED.into_response());
+            }
+
+            let result = dispatch_method(msg, &state, &user).await;
+            Ok(render_jsonrpc_response(&method, result))
+        })
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            tracing::error!(error = %error, "MCP request failed before response rendering");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"message": "internal error"})),
+            )
+                .into_response()
         }
-        Err(e) => return unauthorized_response(&method, &e),
-    };
-
-    if is_notification {
-        tracing::info!(method = %method, "notification acknowledged");
-        return StatusCode::ACCEPTED.into_response();
     }
-
-    let result = dispatch_method(msg, &state, &user).await;
-    render_jsonrpc_response(&method, result)
 }
 
 // -- Auth --
@@ -466,7 +491,13 @@ async fn dispatch_list_recipes(
         .get("search")
         .and_then(|v| v.as_str())
         .map(String::from);
-    match list_recipes(state, search).await {
+    let operation = mcp_operation(state, "tastebase.mcp.tools.list_recipes")
+        .with_detail("search.present", search.is_some());
+
+    match operation
+        .observe(async { list_recipes(state, search).await })
+        .await
+    {
         Ok(result) => tool_json_response(msg_id, &result),
         Err(e) => {
             tracing::error!(error = %e, "list_recipes failed");
@@ -488,7 +519,17 @@ async fn dispatch_save_recipe(
             return tool_text_response(msg_id, format!("{e}"), true);
         }
     };
-    match save_recipe(state, user, recipe_params).await {
+    let operation = mcp_operation(state, "tastebase.mcp.tools.save_recipe")
+        .with_detail(
+            "recipe.ingredients_count",
+            recipe_params.ingredients.len() as u64,
+        )
+        .with_detail("recipe.steps_count", recipe_params.steps.len() as u64);
+
+    match operation
+        .observe(async { save_recipe(state, user, recipe_params).await })
+        .await
+    {
         Ok(result) => tool_json_response(msg_id, &result),
         Err(e) => {
             tracing::error!(error = %e, "save_recipe execution failed");
@@ -516,7 +557,18 @@ async fn dispatch_update_recipe(
             return tool_text_response(msg_id, format!("{e}"), true);
         }
     };
-    match update_recipe(state, user, recipe_params).await {
+    let operation = mcp_operation(state, "tastebase.mcp.tools.update_recipe")
+        .with_detail("recipe.new_version", recipe_params.new_version)
+        .with_detail("recipe.title", recipe_params.title.is_some())
+        .with_detail("recipe.description", recipe_params.description.is_some())
+        .with_detail("recipe.notes", recipe_params.notes.is_some())
+        .with_detail("recipe.ingredients", recipe_params.ingredients.is_some())
+        .with_detail("recipe.steps", recipe_params.steps.is_some());
+
+    match operation
+        .observe(async { update_recipe(state, user, recipe_params).await })
+        .await
+    {
         Ok(result) => tool_json_response(msg_id, &result),
         Err(e) => {
             tracing::error!(error = %e, "update_recipe execution failed");
@@ -1083,9 +1135,10 @@ fn router(state: AppState) -> Router {
 
 #[tokio::main]
 async fn main() -> Result<(), lambda_http::Error> {
-    shared::init_tracing();
+    let telemetry = shared::telemetry_config(SERVICE_NAME);
+    ahara_lambda_telemetry::init_lambda_logging(&telemetry);
     tracing::info!("mcp-server starting");
-    let state = AppState::from_env().await;
+    let state = AppState::from_env(telemetry.clone()).await;
     let app = router(state);
-    lambda_http::run(app).await
+    ahara_lambda_telemetry::run_http_lambda(telemetry, app).await
 }

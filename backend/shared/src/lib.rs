@@ -15,10 +15,11 @@ pub struct AppState {
     pub db: PgPool,
     pub s3: aws_sdk_s3::Client,
     pub media_bucket: String,
+    pub telemetry: ahara_lambda_telemetry::TelemetryConfig,
 }
 
 impl AppState {
-    pub async fn from_env() -> Self {
+    pub async fn from_env(telemetry: ahara_lambda_telemetry::TelemetryConfig) -> Self {
         let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
         let db = db::connect().await;
         let s3 = aws_sdk_s3::Client::new(&config);
@@ -27,18 +28,11 @@ impl AppState {
             db,
             s3,
             media_bucket,
+            telemetry,
         }
     }
 }
 
-/// Initialize tracing for Lambda (JSON structured logs).
-pub fn init_tracing() {
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(tracing::Level::INFO.into()),
-        )
-        .without_time() // Lambda adds timestamps
-        .init();
+pub fn telemetry_config(service_name: &'static str) -> ahara_lambda_telemetry::TelemetryConfig {
+    ahara_lambda_telemetry::TelemetryConfig::new(service_name)
 }

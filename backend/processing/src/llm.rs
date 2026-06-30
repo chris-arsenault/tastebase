@@ -1,3 +1,4 @@
+use ahara_lambda_telemetry::{Operation, OperationKind, TelemetryConfig};
 use aws_sdk_bedrockruntime::Client as BedrockClient;
 use serde_json::Value;
 
@@ -42,45 +43,58 @@ pub fn build_vision_prompt(instructions: &str, image_base64: &str, image_mime_ty
 
 /// Send a payload to Bedrock's InvokeModel and return the text response.
 pub async fn invoke_claude(
+    telemetry: &TelemetryConfig,
     client: &BedrockClient,
     model_id: &str,
     payload: &Value,
+    purpose: &'static str,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let body = serde_json::to_vec(payload)?;
+    let payload_bytes = body.len() as u64;
 
-    tracing::info!(model_id, payload_bytes = body.len(), "invoking bedrock");
+    Operation::new(telemetry.clone(), "tastebase.ai.bedrock.invoke")
+        .with_domain("aws.bedrock")
+        .with_kind(OperationKind::Background)
+        .with_detail("ai.model_id", model_id.to_string())
+        .with_detail("ai.purpose", purpose)
+        .with_detail("payload.bytes", payload_bytes)
+        .observe(async move {
+            tracing::info!(model_id, payload_bytes, purpose, "invoking bedrock");
 
-    let resp = match client
-        .invoke_model()
-        .model_id(model_id)
-        .content_type("application/json")
-        .accept("application/json")
-        .body(aws_sdk_bedrockruntime::primitives::Blob::new(body))
-        .send()
+            let resp = match client
+                .invoke_model()
+                .model_id(model_id)
+                .content_type("application/json")
+                .accept("application/json")
+                .body(aws_sdk_bedrockruntime::primitives::Blob::new(body))
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    let raw = format!("{e:?}");
+                    let source = e
+                        .into_service_error()
+                        .meta()
+                        .message()
+                        .unwrap_or("unknown")
+                        .to_string();
+                    tracing::error!(model_id, error = %source, raw = %raw, "bedrock invoke failed");
+                    return Err(source.into());
+                }
+            };
+
+            let response_bytes = resp.body().as_ref();
+            let response_str = std::str::from_utf8(response_bytes)?;
+            tracing::info!(
+                model_id,
+                response_len = response_str.len(),
+                purpose,
+                "bedrock invoke success"
+            );
+            Ok(extract_claude_text(response_str))
+        })
         .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            let raw = format!("{e:?}");
-            let source = e
-                .into_service_error()
-                .meta()
-                .message()
-                .unwrap_or("unknown")
-                .to_string();
-            tracing::error!(model_id, error = %source, raw = %raw, "bedrock invoke failed");
-            return Err(source.into());
-        }
-    };
-
-    let response_bytes = resp.body().as_ref();
-    let response_str = std::str::from_utf8(response_bytes)?;
-    tracing::info!(
-        model_id,
-        response_len = response_str.len(),
-        "bedrock invoke success"
-    );
-    Ok(extract_claude_text(response_str))
 }
 
 /// Extract the text content from a Claude messages API response.

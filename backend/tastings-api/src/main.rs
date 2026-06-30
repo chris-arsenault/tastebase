@@ -1,3 +1,4 @@
+use ahara_lambda_telemetry::{Operation, OperationKind, TelemetryConfig};
 use axum::extract::{Path, Query, State};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
@@ -6,6 +7,18 @@ use shared::AppState;
 use shared::error::AppError;
 use shared::types::{Tasting, TastingPublic};
 use uuid::Uuid;
+
+const SERVICE_NAME: &str = "tastebase-tastings-api";
+
+fn tasting_operation(state: &AppState, name: &'static str) -> Operation {
+    Operation::new(state.telemetry.clone(), name).with_domain("tastebase.tastings")
+}
+
+fn lambda_operation(telemetry: &TelemetryConfig, name: &'static str) -> Operation {
+    Operation::new(telemetry.clone(), name)
+        .with_domain("aws.lambda")
+        .with_kind(OperationKind::Background)
+}
 
 fn public_url_for_key(bucket: &str, key: &str) -> String {
     format!("https://{bucket}.s3.amazonaws.com/{key}")
@@ -23,65 +36,98 @@ struct ListParams {
     date: Option<String>,
 }
 
+impl ListParams {
+    fn filter_count(&self) -> u64 {
+        [
+            self.name.is_some(),
+            self.style.is_some(),
+            self.min_score.is_some(),
+            self.max_score.is_some(),
+            self.min_heat.is_some(),
+            self.max_heat.is_some(),
+            self.date.is_some(),
+        ]
+        .into_iter()
+        .filter(|present| *present)
+        .count() as u64
+    }
+}
+
 async fn list_tastings(
     State(state): State<AppState>,
     Query(params): Query<ListParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    tracing::info!("listing tastings");
+    let operation = tasting_operation(&state, "tastebase.tastings.list")
+        .with_detail("filter.count", params.filter_count())
+        .with_detail("filter.name", params.name.is_some())
+        .with_detail("filter.style", params.style.is_some())
+        .with_detail(
+            "filter.score",
+            params.min_score.is_some() || params.max_score.is_some(),
+        )
+        .with_detail(
+            "filter.heat",
+            params.min_heat.is_some() || params.max_heat.is_some(),
+        )
+        .with_detail("filter.date", params.date.is_some());
 
-    let mut sql = String::from("SELECT * FROM tastings WHERE 1=1");
-    let mut binds: Vec<String> = Vec::new();
-    let mut bind_idx = 1u32;
+    operation
+        .observe(async move {
+            tracing::info!("listing tastings");
 
-    if let Some(ref name) = params.name {
-        sql.push_str(&format!(" AND name ILIKE ${bind_idx}"));
-        binds.push(format!("%{name}%"));
-        bind_idx += 1;
-    }
-    if let Some(ref style) = params.style {
-        sql.push_str(&format!(" AND style ILIKE ${bind_idx}"));
-        binds.push(format!("%{style}%"));
-        bind_idx += 1;
-    }
-    if let Some(min) = params.min_score {
-        sql.push_str(&format!(" AND score >= ${bind_idx}"));
-        binds.push(min.to_string());
-        bind_idx += 1;
-    }
-    if let Some(max) = params.max_score {
-        sql.push_str(&format!(" AND score <= ${bind_idx}"));
-        binds.push(max.to_string());
-        bind_idx += 1;
-    }
-    if let Some(min) = params.min_heat {
-        sql.push_str(&format!(" AND heat_user >= ${bind_idx}"));
-        binds.push(min.to_string());
-        bind_idx += 1;
-    }
-    if let Some(max) = params.max_heat {
-        sql.push_str(&format!(" AND heat_user <= ${bind_idx}"));
-        binds.push(max.to_string());
-        bind_idx += 1;
-    }
-    if let Some(ref date) = params.date {
-        sql.push_str(&format!(" AND date = ${bind_idx}"));
-        binds.push(date.clone());
-        bind_idx += 1;
-    }
-    let _ = bind_idx;
+            let mut sql = String::from("SELECT * FROM tastings WHERE 1=1");
+            let mut binds: Vec<String> = Vec::new();
+            let mut bind_idx = 1u32;
 
-    sql.push_str(" ORDER BY date DESC, created_at DESC");
+            if let Some(ref name) = params.name {
+                sql.push_str(&format!(" AND name ILIKE ${bind_idx}"));
+                binds.push(format!("%{name}%"));
+                bind_idx += 1;
+            }
+            if let Some(ref style) = params.style {
+                sql.push_str(&format!(" AND style ILIKE ${bind_idx}"));
+                binds.push(format!("%{style}%"));
+                bind_idx += 1;
+            }
+            if let Some(min) = params.min_score {
+                sql.push_str(&format!(" AND score >= ${bind_idx}"));
+                binds.push(min.to_string());
+                bind_idx += 1;
+            }
+            if let Some(max) = params.max_score {
+                sql.push_str(&format!(" AND score <= ${bind_idx}"));
+                binds.push(max.to_string());
+                bind_idx += 1;
+            }
+            if let Some(min) = params.min_heat {
+                sql.push_str(&format!(" AND heat_user >= ${bind_idx}"));
+                binds.push(min.to_string());
+                bind_idx += 1;
+            }
+            if let Some(max) = params.max_heat {
+                sql.push_str(&format!(" AND heat_user <= ${bind_idx}"));
+                binds.push(max.to_string());
+                bind_idx += 1;
+            }
+            if let Some(ref date) = params.date {
+                sql.push_str(&format!(" AND date = ${bind_idx}"));
+                binds.push(date.clone());
+            }
 
-    let mut query = sqlx::query_as::<_, Tasting>(&sql);
-    for b in &binds {
-        query = query.bind(b);
-    }
+            sql.push_str(" ORDER BY date DESC, created_at DESC");
 
-    let tastings = query.fetch_all(&state.db).await?;
-    let count = tastings.len();
-    let public: Vec<TastingPublic> = tastings.into_iter().map(Into::into).collect();
-    tracing::info!(count, "tastings listed");
-    Ok(Json(serde_json::json!({ "data": public })))
+            let mut query = sqlx::query_as::<_, Tasting>(&sql);
+            for b in &binds {
+                query = query.bind(b);
+            }
+
+            let tastings = query.fetch_all(&state.db).await?;
+            let count = tastings.len();
+            let public: Vec<TastingPublic> = tastings.into_iter().map(Into::into).collect();
+            tracing::info!(count, "tastings listed");
+            Ok(Json(serde_json::json!({ "data": public })))
+        })
+        .await
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,124 +159,145 @@ async fn create_tasting(
     State(state): State<AppState>,
     Json(input): Json<CreateTastingInput>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    tracing::info!("creating tasting");
+    let operation = tasting_operation(&state, "tastebase.tastings.create")
+        .with_detail("media.image", input.image_key.is_some())
+        .with_detail(
+            "media.ingredients_image",
+            input.ingredients_image_key.is_some(),
+        )
+        .with_detail("media.nutrition_image", input.nutrition_image_key.is_some())
+        .with_detail("media.voice", input.voice_key.is_some())
+        .with_detail("field.score", input.score.is_some())
+        .with_detail("field.heat_user", input.heat_user.is_some());
 
-    shared::validate::validate_tasting_input(
-        input.name.as_deref(),
-        input.maker.as_deref(),
-        input.style.as_deref(),
-        input.score,
-        input.heat_user,
-        input.heat_vendor,
-        input.refreshing,
-        input.sweet,
-        input.tasting_notes_user.as_deref(),
-        input.tasting_notes_vendor.as_deref(),
-        input.product_url.as_deref(),
-    )?;
+    operation
+        .observe(async move {
+            tracing::info!("creating tasting");
 
-    let name = shared::sanitize::clean_or_empty(input.name.as_deref());
-    let maker = shared::sanitize::clean_or_empty(input.maker.as_deref());
-    let style = shared::sanitize::clean_or_empty(input.style.as_deref());
-    let tasting_notes_user = shared::sanitize::clean_or_empty(input.tasting_notes_user.as_deref());
-    let tasting_notes_vendor =
-        shared::sanitize::clean_or_empty(input.tasting_notes_vendor.as_deref());
-    let product_url = shared::sanitize::clean_or_empty(input.product_url.as_deref());
+            shared::validate::validate_tasting_input(
+                input.name.as_deref(),
+                input.maker.as_deref(),
+                input.style.as_deref(),
+                input.score,
+                input.heat_user,
+                input.heat_vendor,
+                input.refreshing,
+                input.sweet,
+                input.tasting_notes_user.as_deref(),
+                input.tasting_notes_vendor.as_deref(),
+                input.product_url.as_deref(),
+            )?;
 
-    let id = Uuid::new_v4();
-    let now = time::OffsetDateTime::now_utc();
-    let date_str = input.date.as_deref().unwrap_or("");
-    let date = time::Date::parse(
-        date_str,
-        &time::format_description::well_known::Iso8601::DEFAULT,
-    )
-    .unwrap_or_else(|_| now.date());
+            let name = shared::sanitize::clean_or_empty(input.name.as_deref());
+            let maker = shared::sanitize::clean_or_empty(input.maker.as_deref());
+            let style = shared::sanitize::clean_or_empty(input.style.as_deref());
+            let tasting_notes_user =
+                shared::sanitize::clean_or_empty(input.tasting_notes_user.as_deref());
+            let tasting_notes_vendor =
+                shared::sanitize::clean_or_empty(input.tasting_notes_vendor.as_deref());
+            let product_url = shared::sanitize::clean_or_empty(input.product_url.as_deref());
 
-    let image_url = input
-        .image_key
-        .as_deref()
-        .map(|k| public_url_for_key(&state.media_bucket, k));
-    let ingredients_url = input
-        .ingredients_image_key
-        .as_deref()
-        .map(|k| public_url_for_key(&state.media_bucket, k));
-    let nutrition_url = input
-        .nutrition_image_key
-        .as_deref()
-        .map(|k| public_url_for_key(&state.media_bucket, k));
+            let id = Uuid::new_v4();
+            let now = time::OffsetDateTime::now_utc();
+            let date_str = input.date.as_deref().unwrap_or("");
+            let date = time::Date::parse(
+                date_str,
+                &time::format_description::well_known::Iso8601::DEFAULT,
+            )
+            .unwrap_or_else(|_| now.date());
 
-    sqlx::query(
-        "INSERT INTO tastings (id, name, maker, date, score, style,
-         heat_user, heat_vendor, refreshing, sweet,
-         tasting_notes_user, tasting_notes_vendor, product_url,
-         image_url, image_key, ingredients_image_url, ingredients_image_key,
-         nutrition_image_url, nutrition_image_key, voice_key,
-         status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                 $14, $15, $16, $17, $18, $19, $20, 'pending', $21, $21)",
-    )
-    .bind(id)
-    .bind(&name)
-    .bind(&maker)
-    .bind(date)
-    .bind(input.score)
-    .bind(&style)
-    .bind(input.heat_user)
-    .bind(input.heat_vendor)
-    .bind(input.refreshing)
-    .bind(input.sweet)
-    .bind(&tasting_notes_user)
-    .bind(&tasting_notes_vendor)
-    .bind(&product_url)
-    .bind(image_url.as_deref())
-    .bind(input.image_key.as_deref())
-    .bind(ingredients_url.as_deref())
-    .bind(input.ingredients_image_key.as_deref())
-    .bind(nutrition_url.as_deref())
-    .bind(input.nutrition_image_key.as_deref())
-    .bind(input.voice_key.as_deref())
-    .bind(now)
-    .execute(&state.db)
-    .await?;
+            let image_url = input
+                .image_key
+                .as_deref()
+                .map(|k| public_url_for_key(&state.media_bucket, k));
+            let ingredients_url = input
+                .ingredients_image_key
+                .as_deref()
+                .map(|k| public_url_for_key(&state.media_bucket, k));
+            let nutrition_url = input
+                .nutrition_image_key
+                .as_deref()
+                .map(|k| public_url_for_key(&state.media_bucket, k));
 
-    tracing::info!(tasting_id = %id, "tasting created");
+            sqlx::query(
+                "INSERT INTO tastings (id, name, maker, date, score, style,
+                 heat_user, heat_vendor, refreshing, sweet,
+                 tasting_notes_user, tasting_notes_vendor, product_url,
+                 image_url, image_key, ingredients_image_url, ingredients_image_key,
+                 nutrition_image_url, nutrition_image_key, voice_key,
+                 status, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                         $14, $15, $16, $17, $18, $19, $20, 'pending', $21, $21)",
+            )
+            .bind(id)
+            .bind(&name)
+            .bind(&maker)
+            .bind(date)
+            .bind(input.score)
+            .bind(&style)
+            .bind(input.heat_user)
+            .bind(input.heat_vendor)
+            .bind(input.refreshing)
+            .bind(input.sweet)
+            .bind(&tasting_notes_user)
+            .bind(&tasting_notes_vendor)
+            .bind(&product_url)
+            .bind(image_url.as_deref())
+            .bind(input.image_key.as_deref())
+            .bind(ingredients_url.as_deref())
+            .bind(input.ingredients_image_key.as_deref())
+            .bind(nutrition_url.as_deref())
+            .bind(input.nutrition_image_key.as_deref())
+            .bind(input.voice_key.as_deref())
+            .bind(now)
+            .execute(&state.db)
+            .await?;
 
-    invoke_processing(
-        &state.db,
-        id,
-        false,
-        input.image_key.as_deref(),
-        input.ingredients_image_key.as_deref(),
-        input.nutrition_image_key.as_deref(),
-        input.voice_key.as_deref(),
-        normalize_mime(input.image_mime_type.as_deref())
-            .or_else(|| infer_mime(input.image_key.as_deref())),
-        normalize_mime(input.ingredients_image_mime_type.as_deref())
-            .or_else(|| infer_mime(input.ingredients_image_key.as_deref())),
-        normalize_mime(input.nutrition_image_mime_type.as_deref())
-            .or_else(|| infer_mime(input.nutrition_image_key.as_deref())),
-        normalize_mime(input.voice_mime_type.as_deref())
-            .or_else(|| infer_mime(input.voice_key.as_deref())),
-    )
-    .await;
+            tracing::info!(tasting_id = %id, "tasting created");
 
-    Ok(axum::http::StatusCode::NO_CONTENT)
+            invoke_processing(
+                &state,
+                id,
+                false,
+                input.image_key.as_deref(),
+                input.ingredients_image_key.as_deref(),
+                input.nutrition_image_key.as_deref(),
+                input.voice_key.as_deref(),
+                normalize_mime(input.image_mime_type.as_deref())
+                    .or_else(|| infer_mime(input.image_key.as_deref())),
+                normalize_mime(input.ingredients_image_mime_type.as_deref())
+                    .or_else(|| infer_mime(input.ingredients_image_key.as_deref())),
+                normalize_mime(input.nutrition_image_mime_type.as_deref())
+                    .or_else(|| infer_mime(input.nutrition_image_key.as_deref())),
+                normalize_mime(input.voice_mime_type.as_deref())
+                    .or_else(|| infer_mime(input.voice_key.as_deref())),
+            )
+            .await;
+
+            Ok(axum::http::StatusCode::NO_CONTENT)
+        })
+        .await
 }
 
 async fn delete_tasting(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    let result = sqlx::query("DELETE FROM tastings WHERE id = $1")
-        .bind(id)
-        .execute(&state.db)
-        .await?;
+    tasting_operation(&state, "tastebase.tastings.delete")
+        .with_detail("tasting.id", id.to_string())
+        .observe(async move {
+            let result = sqlx::query("DELETE FROM tastings WHERE id = $1")
+                .bind(id)
+                .execute(&state.db)
+                .await?;
 
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound);
-    }
-    tracing::info!(tasting_id = %id, "tasting deleted");
-    Ok(axum::http::StatusCode::NO_CONTENT)
+            if result.rows_affected() == 0 {
+                return Err(AppError::NotFound);
+            }
+            tracing::info!(tasting_id = %id, "tasting deleted");
+            Ok(axum::http::StatusCode::NO_CONTENT)
+        })
+        .await
 }
 
 #[derive(Debug, Deserialize)]
@@ -246,65 +313,78 @@ async fn update_media(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateMediaInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM tastings WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&state.db)
-        .await?;
-    if exists.is_none() {
-        return Err(AppError::NotFound);
-    }
+    let operation = tasting_operation(&state, "tastebase.tastings.update_media")
+        .with_detail("tasting.id", id.to_string())
+        .with_detail("media.image", input.image_key.is_some())
+        .with_detail(
+            "media.ingredients_image",
+            input.ingredients_image_key.is_some(),
+        )
+        .with_detail("media.nutrition_image", input.nutrition_image_key.is_some());
 
-    if input.image_key.is_none()
-        && input.ingredients_image_key.is_none()
-        && input.nutrition_image_key.is_none()
-    {
-        return Err(AppError::BadRequest("no media provided".into()));
-    }
+    operation
+        .observe(async move {
+            let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM tastings WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&state.db)
+                .await?;
+            if exists.is_none() {
+                return Err(AppError::NotFound);
+            }
 
-    let image_url = input
-        .image_key
-        .as_deref()
-        .map(|k| public_url_for_key(&state.media_bucket, k));
-    let ingredients_url = input
-        .ingredients_image_key
-        .as_deref()
-        .map(|k| public_url_for_key(&state.media_bucket, k));
-    let nutrition_url = input
-        .nutrition_image_key
-        .as_deref()
-        .map(|k| public_url_for_key(&state.media_bucket, k));
+            if input.image_key.is_none()
+                && input.ingredients_image_key.is_none()
+                && input.nutrition_image_key.is_none()
+            {
+                return Err(AppError::BadRequest("no media provided".into()));
+            }
 
-    let now = time::OffsetDateTime::now_utc();
-    sqlx::query(
-        "UPDATE tastings SET
-            image_url = COALESCE($2, image_url),
-            image_key = COALESCE($3, image_key),
-            ingredients_image_url = COALESCE($4, ingredients_image_url),
-            ingredients_image_key = COALESCE($5, ingredients_image_key),
-            nutrition_image_url = COALESCE($6, nutrition_image_url),
-            nutrition_image_key = COALESCE($7, nutrition_image_key),
-            updated_at = $8
-         WHERE id = $1",
-    )
-    .bind(id)
-    .bind(image_url.as_deref())
-    .bind(input.image_key.as_deref())
-    .bind(ingredients_url.as_deref())
-    .bind(input.ingredients_image_key.as_deref())
-    .bind(nutrition_url.as_deref())
-    .bind(input.nutrition_image_key.as_deref())
-    .bind(now)
-    .execute(&state.db)
-    .await?;
+            let image_url = input
+                .image_key
+                .as_deref()
+                .map(|k| public_url_for_key(&state.media_bucket, k));
+            let ingredients_url = input
+                .ingredients_image_key
+                .as_deref()
+                .map(|k| public_url_for_key(&state.media_bucket, k));
+            let nutrition_url = input
+                .nutrition_image_key
+                .as_deref()
+                .map(|k| public_url_for_key(&state.media_bucket, k));
 
-    let updated: Tasting = sqlx::query_as("SELECT * FROM tastings WHERE id = $1")
-        .bind(id)
-        .fetch_one(&state.db)
-        .await?;
+            let now = time::OffsetDateTime::now_utc();
+            sqlx::query(
+                "UPDATE tastings SET
+                    image_url = COALESCE($2, image_url),
+                    image_key = COALESCE($3, image_key),
+                    ingredients_image_url = COALESCE($4, ingredients_image_url),
+                    ingredients_image_key = COALESCE($5, ingredients_image_key),
+                    nutrition_image_url = COALESCE($6, nutrition_image_url),
+                    nutrition_image_key = COALESCE($7, nutrition_image_key),
+                    updated_at = $8
+                 WHERE id = $1",
+            )
+            .bind(id)
+            .bind(image_url.as_deref())
+            .bind(input.image_key.as_deref())
+            .bind(ingredients_url.as_deref())
+            .bind(input.ingredients_image_key.as_deref())
+            .bind(nutrition_url.as_deref())
+            .bind(input.nutrition_image_key.as_deref())
+            .bind(now)
+            .execute(&state.db)
+            .await?;
 
-    tracing::info!(tasting_id = %id, "media updated");
-    let public: TastingPublic = updated.into();
-    Ok(Json(serde_json::json!({ "data": public })))
+            let updated: Tasting = sqlx::query_as("SELECT * FROM tastings WHERE id = $1")
+                .bind(id)
+                .fetch_one(&state.db)
+                .await?;
+
+            tracing::info!(tasting_id = %id, "media updated");
+            let public: TastingPublic = updated.into();
+            Ok(Json(serde_json::json!({ "data": public })))
+        })
+        .await
 }
 
 // -- Upload URL endpoint: returns presigned S3 PUT URL --
@@ -320,80 +400,97 @@ async fn get_upload_url(
     State(state): State<AppState>,
     Json(input): Json<UploadUrlInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let ext = input
+    let content_type = input
         .content_type
         .split(';')
         .next()
         .unwrap_or(&input.content_type)
-        .split('/')
-        .nth(1)
-        .unwrap_or("bin");
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let prefix = match input.upload_type.as_str() {
-        "voice" => "tasting-voice",
-        _ => "tasting-images",
-    };
-    let id = Uuid::new_v4();
-    let key = format!("{prefix}/{ts}-{id}.{ext}");
+        .trim()
+        .to_string();
+    let operation = tasting_operation(&state, "tastebase.tastings.presign_upload")
+        .with_detail("upload.type", input.upload_type.clone())
+        .with_detail("media.content_type", content_type.clone());
 
-    let (presigned_url, public_url) =
-        shared::media::presign_upload(&state.s3, &state.media_bucket, &key, &input.content_type)
+    operation
+        .observe(async move {
+            let ext = content_type.split('/').nth(1).unwrap_or("bin");
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let prefix = match input.upload_type.as_str() {
+                "voice" => "tasting-voice",
+                _ => "tasting-images",
+            };
+            let id = Uuid::new_v4();
+            let key = format!("{prefix}/{ts}-{id}.{ext}");
+
+            let (presigned_url, public_url) = shared::media::presign_upload(
+                &state.s3,
+                &state.media_bucket,
+                &key,
+                &input.content_type,
+            )
             .await?;
 
-    tracing::info!(upload_type = %input.upload_type, key = %key, "presigned URL generated");
+            tracing::info!(upload_type = %input.upload_type, "presigned URL generated");
 
-    Ok(Json(serde_json::json!({
-        "uploadUrl": presigned_url,
-        "key": key,
-        "publicUrl": public_url
-    })))
+            Ok(Json(serde_json::json!({
+                "uploadUrl": presigned_url,
+                "key": key,
+                "publicUrl": public_url
+            })))
+        })
+        .await
 }
 
 async fn rerun_processing(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    let tasting: Option<Tasting> = sqlx::query_as("SELECT * FROM tastings WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&state.db)
-        .await?;
+    tasting_operation(&state, "tastebase.tastings.rerun_processing")
+        .with_detail("tasting.id", id.to_string())
+        .observe(async move {
+            let tasting: Option<Tasting> = sqlx::query_as("SELECT * FROM tastings WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&state.db)
+                .await?;
 
-    let tasting = tasting.ok_or(AppError::NotFound)?;
-    let has_media = tasting.image_key.is_some()
-        || tasting.ingredients_image_key.is_some()
-        || tasting.nutrition_image_key.is_some()
-        || tasting.voice_key.is_some();
+            let tasting = tasting.ok_or(AppError::NotFound)?;
+            let has_media = tasting.image_key.is_some()
+                || tasting.ingredients_image_key.is_some()
+                || tasting.nutrition_image_key.is_some()
+                || tasting.voice_key.is_some();
 
-    if !has_media {
-        return Err(AppError::BadRequest("no media available to process".into()));
-    }
+            if !has_media {
+                return Err(AppError::BadRequest("no media available to process".into()));
+            }
 
-    sqlx::query("UPDATE tastings SET status = 'pending', updated_at = now() WHERE id = $1")
-        .bind(id)
-        .execute(&state.db)
-        .await?;
+            sqlx::query("UPDATE tastings SET status = 'pending', updated_at = now() WHERE id = $1")
+                .bind(id)
+                .execute(&state.db)
+                .await?;
 
-    tracing::info!(tasting_id = %id, "rerun processing requested");
+            tracing::info!(tasting_id = %id, "rerun processing requested");
 
-    invoke_processing(
-        &state.db,
-        id,
-        true,
-        tasting.image_key.as_deref(),
-        tasting.ingredients_image_key.as_deref(),
-        tasting.nutrition_image_key.as_deref(),
-        tasting.voice_key.as_deref(),
-        infer_mime(tasting.image_key.as_deref()),
-        infer_mime(tasting.ingredients_image_key.as_deref()),
-        infer_mime(tasting.nutrition_image_key.as_deref()),
-        infer_mime(tasting.voice_key.as_deref()),
-    )
-    .await;
+            invoke_processing(
+                &state,
+                id,
+                true,
+                tasting.image_key.as_deref(),
+                tasting.ingredients_image_key.as_deref(),
+                tasting.nutrition_image_key.as_deref(),
+                tasting.voice_key.as_deref(),
+                infer_mime(tasting.image_key.as_deref()),
+                infer_mime(tasting.ingredients_image_key.as_deref()),
+                infer_mime(tasting.nutrition_image_key.as_deref()),
+                infer_mime(tasting.voice_key.as_deref()),
+            )
+            .await;
 
-    Ok(axum::http::StatusCode::NO_CONTENT)
+            Ok(axum::http::StatusCode::NO_CONTENT)
+        })
+        .await
 }
 
 // -- Helpers --
@@ -437,27 +534,53 @@ fn processing_function_name() -> Option<String> {
 }
 
 async fn dispatch_processing_lambda(
+    telemetry: &TelemetryConfig,
     function_name: &str,
     payload: serde_json::Value,
 ) -> Result<i32, String> {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-    let lambda_client = aws_sdk_lambda::Client::new(&config);
-    let resp = lambda_client
-        .invoke()
-        .function_name(function_name)
-        .invocation_type(aws_sdk_lambda::types::InvocationType::Event)
-        .payload(aws_sdk_lambda::primitives::Blob::new(
-            serde_json::to_vec(&payload).unwrap_or_default(),
-        ))
-        .send()
+    let has_voice = payload.get("voice_key").and_then(|v| v.as_str()).is_some();
+    let media_count = [
+        payload.get("image_key").and_then(|v| v.as_str()).is_some(),
+        payload
+            .get("ingredients_image_key")
+            .and_then(|v| v.as_str())
+            .is_some(),
+        payload
+            .get("nutrition_image_key")
+            .and_then(|v| v.as_str())
+            .is_some(),
+        has_voice,
+    ]
+    .into_iter()
+    .filter(|present| *present)
+    .count() as u64;
+
+    lambda_operation(telemetry, "tastebase.processing.invoke")
+        .with_detail("lambda.invocation_type", "event")
+        .with_detail("payload.process_type", "tasting")
+        .with_detail("payload.media_count", media_count)
+        .with_detail("payload.voice", has_voice)
+        .observe(async move {
+            let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+            let lambda_client = aws_sdk_lambda::Client::new(&config);
+            let resp = lambda_client
+                .invoke()
+                .function_name(function_name)
+                .invocation_type(aws_sdk_lambda::types::InvocationType::Event)
+                .payload(aws_sdk_lambda::primitives::Blob::new(
+                    serde_json::to_vec(&payload).unwrap_or_default(),
+                ))
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(resp.status_code())
+        })
         .await
-        .map_err(|e| e.to_string())?;
-    Ok(resp.status_code())
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn invoke_processing(
-    db: &sqlx::PgPool,
+    state: &AppState,
     record_id: Uuid,
     force_voice: bool,
     image_key: Option<&str>,
@@ -487,7 +610,7 @@ async fn invoke_processing(
         "force_voice": force_voice,
     });
 
-    match dispatch_processing_lambda(&function_name, payload).await {
+    match dispatch_processing_lambda(&state.telemetry, &function_name, payload).await {
         Ok(status_code) => tracing::info!(
             record_id = %record_id,
             status_code,
@@ -495,7 +618,7 @@ async fn invoke_processing(
         ),
         Err(e) => {
             tracing::error!(record_id = %record_id, error = %e, "failed to invoke processing Lambda");
-            record_processing_failure(db, record_id, &e).await;
+            record_processing_failure(&state.db, record_id, &e).await;
         }
     }
 }
@@ -513,9 +636,10 @@ fn router(state: AppState) -> Router {
 
 #[tokio::main]
 async fn main() -> Result<(), lambda_http::Error> {
-    shared::init_tracing();
+    let telemetry = shared::telemetry_config(SERVICE_NAME);
+    ahara_lambda_telemetry::init_lambda_logging(&telemetry);
     tracing::info!("tastings-api starting");
-    let state = AppState::from_env().await;
+    let state = AppState::from_env(telemetry.clone()).await;
     let app = router(state);
-    lambda_http::run(app).await
+    ahara_lambda_telemetry::run_http_lambda(telemetry, app).await
 }

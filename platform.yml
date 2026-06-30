@@ -11,3 +11,4 @@ rust_artifacts:
     - recipes-api
     - mcp-server
     - processing
+rust_telemetry_adoption: true

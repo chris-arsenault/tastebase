@@ -52,7 +52,14 @@ Style examples:
 Use null for any field you cannot determine."#;
 
     let payload = build_vision_prompt(instructions, image_base64, image_mime_type);
-    let text = invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await?;
+    let text = invoke_claude(
+        &ctx.telemetry,
+        &ctx.bedrock,
+        &ctx.bedrock_model_id,
+        &payload,
+        "product_image_extraction",
+    )
+    .await?;
     let parsed = match parse_json_from_text(&text) {
         Some(p) => p,
         None => {
@@ -107,7 +114,14 @@ Guidelines:
 - If no ingredients list visible, set ingredients to empty array"#;
 
     let payload = build_vision_prompt(instructions, image_base64, image_mime_type);
-    let text = invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await?;
+    let text = invoke_claude(
+        &ctx.telemetry,
+        &ctx.bedrock,
+        &ctx.bedrock_model_id,
+        &payload,
+        "ingredients_label_extraction",
+    )
+    .await?;
     let parsed = match parse_json_from_text(&text) {
         Some(p) => p,
         None => return Ok(IngredientsExtraction { ingredients: None }),
@@ -160,7 +174,14 @@ Guidelines:
 - If no nutrition panel visible, set nutrition_facts to null"#;
 
     let payload = build_vision_prompt(instructions, image_base64, image_mime_type);
-    let text = invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await?;
+    let text = invoke_claude(
+        &ctx.telemetry,
+        &ctx.bedrock,
+        &ctx.bedrock_model_id,
+        &payload,
+        "nutrition_label_extraction",
+    )
+    .await?;
     let parsed = match parse_json_from_text(&text) {
         Some(p) => p,
         None => {
@@ -327,7 +348,14 @@ pub async fn extract_voice_metrics(
 
     let instructions = "Extract user tasting details from this transcript. Return JSON only with keys: score, heat_user. Use null for unknowns.";
     let payload = crate::llm::build_text_prompt(instructions, transcript);
-    let text = invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await?;
+    let text = invoke_claude(
+        &ctx.telemetry,
+        &ctx.bedrock,
+        &ctx.bedrock_model_id,
+        &payload,
+        "tasting_voice_metrics",
+    )
+    .await?;
     let parsed = match parse_json_from_text(&text) {
         Some(p) => p,
         None => {
@@ -402,7 +430,14 @@ pub async fn extract_review_score(
          You MUST return valid JSON and nothing else: {\"score\": N} where N is an integer 1-10.";
 
     let payload = crate::llm::build_text_prompt(instructions, transcript);
-    let text = invoke_claude(&ctx.bedrock, &ctx.bedrock_model_id, &payload).await?;
+    let text = invoke_claude(
+        &ctx.telemetry,
+        &ctx.bedrock,
+        &ctx.bedrock_model_id,
+        &payload,
+        "recipe_review_score",
+    )
+    .await?;
     let parsed = parse_json_from_text(&text).ok_or("failed to parse score JSON")?;
     let raw = parsed.get("score").and_then(normalize_number);
     let score = clamp_score_i16(raw).ok_or("no score in response")?;
