@@ -117,8 +117,16 @@ export const uploadTastingMedia = async (
   return uploadTastingBlob(blob, contentType, uploadType, token);
 };
 
-export const fetchTastings = async (): Promise<TastingRecord[]> => {
-  const response = await fetchApi(`${config.apiBaseUrl}/tastings`);
+type FetchTastingsOptions = {
+  forceFresh?: boolean;
+};
+
+export const fetchTastings = async (
+  options: FetchTastingsOptions = {},
+): Promise<TastingRecord[]> => {
+  const response = await fetchApi(`${config.apiBaseUrl}/tastings`, {
+    cache: options.forceFresh ? "reload" : "default",
+  });
   await assertApiOk(response, "Failed to fetch tastings");
   const payload = (await response.json()) as { data: TastingRecord[] };
   return payload.data ?? [];

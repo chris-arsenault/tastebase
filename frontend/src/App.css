@@ -84,6 +84,33 @@
   transform: scale(1.05);
 }
 
+.refresh-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--cream);
+  border: 1px solid rgba(255, 248, 225, 0.35);
+  font-size: 1.05rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.refresh-btn:hover {
+  background: rgba(255, 248, 225, 0.1);
+  transform: none;
+  box-shadow: none;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 /* Hamburger Menu */
 .menu-container {
   position: relative;

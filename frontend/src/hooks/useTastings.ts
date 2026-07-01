@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createTasting,
   deleteTasting as apiDeleteTasting,
@@ -37,6 +37,9 @@ const emptyForm = {
 };
 
 export type FormState = typeof emptyForm;
+
+const PROCESSING_REFRESH_MS = 8000;
+const TERMINAL_STATUSES = new Set(["complete", "error"]);
 
 const numToString = (value: number | null | undefined) =>
   value != null ? String(value) : "";
@@ -112,6 +115,9 @@ const buildEditedRecord = (
 });
 
 const asError = (error: unknown) => (error as Error).message;
+
+const isProcessingTasting = (item: TastingRecord) =>
+  Boolean(item.status && !TERMINAL_STATUSES.has(item.status));
 
 function useFormState() {
   const [formOpen, setFormOpen] = useState(false);
@@ -189,58 +195,104 @@ function useFormState() {
 function useInitialFetch() {
   const [tastings, setTastings] = useState<TastingRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  useEffect(() => {
-    let stale = false;
-    fetchTastings()
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      requestIdRef.current += 1;
+    },
+    [],
+  );
+
+  const reload = useCallback((showLoading = false, forceFresh = false) => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    if (showLoading) setLoading(true);
+    setRefreshing(true);
+    fetchTastings({ forceFresh })
       .then((data) => {
-        if (!stale) setTastings(data);
+        if (mountedRef.current && requestId === requestIdRef.current) {
+          setTastings(data);
+        }
       })
       .catch((e: unknown) => {
-        if (!stale) setErrorMessage(asError(e));
+        if (mountedRef.current && requestId === requestIdRef.current) {
+          setErrorMessage(asError(e));
+        }
       })
       .finally(() => {
-        if (!stale) setLoading(false);
+        if (mountedRef.current && requestId === requestIdRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       });
-    return () => {
-      stale = true;
-    };
   }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => reload(true), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [reload]);
+
   return {
     tastings,
     setTastings,
     loading,
-    setLoading,
+    refreshing,
     errorMessage,
     setErrorMessage,
+    reload,
   };
 }
 
 type TastingOps = {
   update: (id: string, updater: (t: TastingRecord) => TastingRecord) => void;
   remove: (id: string) => void;
-  reload: (showLoading?: boolean) => void;
+  reload: (showLoading?: boolean, forceFresh?: boolean) => void;
   setError: (msg: string) => void;
 };
 
 function useTastingOps(
   setTastings: React.Dispatch<React.SetStateAction<TastingRecord[]>>,
-  setLoading: (v: boolean) => void,
   setErrorMessage: (msg: string) => void,
+  reload: TastingOps["reload"],
 ): TastingOps {
   return {
     update: (id, updater) =>
       setTastings((prev) => prev.map((t) => (t.id === id ? updater(t) : t))),
     remove: (id) => setTastings((prev) => prev.filter((t) => t.id !== id)),
-    reload: (showLoading = false) => {
-      if (showLoading) setLoading(true);
-      fetchTastings()
-        .then(setTastings)
-        .catch((e: unknown) => setErrorMessage(asError(e)))
-        .finally(() => setLoading(false));
-    },
+    reload,
     setError: setErrorMessage,
   };
+}
+
+function useProcessingRefresh(
+  hasProcessingTastings: boolean,
+  reload: TastingOps["reload"],
+) {
+  useEffect(() => {
+    if (!hasProcessingTastings) return undefined;
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") reload(false, true);
+    }, PROCESSING_REFRESH_MS);
+    return () => window.clearInterval(intervalId);
+  }, [hasProcessingTastings, reload]);
+
+  useEffect(() => {
+    if (!hasProcessingTastings) return undefined;
+    const refreshOnVisible = () => {
+      if (document.visibilityState === "visible") reload(false, true);
+    };
+    document.addEventListener("visibilitychange", refreshOnVisible);
+    window.addEventListener("focus", refreshOnVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshOnVisible);
+      window.removeEventListener("focus", refreshOnVisible);
+    };
+  }, [hasProcessingTastings, reload]);
 }
 
 function useSubmission(
@@ -349,14 +401,21 @@ export function useTastings(auth: AuthState) {
     tastings,
     setTastings,
     loading,
-    setLoading,
+    refreshing,
     errorMessage,
     setErrorMessage,
+    reload,
   } = useInitialFetch();
   const formState = useFormState();
-  const ops = useTastingOps(setTastings, setLoading, setErrorMessage);
+  const ops = useTastingOps(setTastings, setErrorMessage, reload);
   const submission = useSubmission(auth, formState, ops);
   const deletion = useDeletion(auth, ops);
+  const hasProcessingTastings = useMemo(
+    () => tastings.some(isProcessingTasting),
+    [tastings],
+  );
+  useProcessingRefresh(hasProcessingTastings, reload);
+  const refresh = useCallback(() => reload(false, true), [reload]);
 
   useEffect(() => {
     if (auth.status === "signedOut") {
@@ -368,8 +427,11 @@ export function useTastings(auth: AuthState) {
   return {
     tastings,
     loading,
+    refreshing,
     errorMessage,
     setErrorMessage,
+    refresh,
+    hasProcessingTastings,
     ...formState,
     ...submission,
     ...deletion,

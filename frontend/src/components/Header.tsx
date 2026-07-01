@@ -218,11 +218,13 @@ function ProductToggle({
 }
 
 type MenuState = { open: boolean; setOpen: (open: boolean) => void };
+type RefreshState = { refreshing: boolean; onRefresh: () => void };
 
 function HeaderActions({
   auth,
   section,
   formOpen,
+  refresh,
   menu,
   onAdd,
   onCloseForm,
@@ -232,6 +234,7 @@ function HeaderActions({
   auth: AuthState;
   section: AppSection;
   formOpen: boolean;
+  refresh: RefreshState;
   menu: MenuState;
   onAdd: () => void;
   onCloseForm: () => void;
@@ -240,6 +243,18 @@ function HeaderActions({
 }>) {
   return (
     <div className="header-actions">
+      {auth.status === "signedIn" && section === "tastings" && (
+        <button
+          className="refresh-btn"
+          onClick={refresh.onRefresh}
+          disabled={refresh.refreshing}
+          title="Refresh data"
+          aria-label="Refresh data"
+        >
+          {refresh.refreshing ? "..." : "\u21BB"}
+        </button>
+      )}
+
       {auth.status === "signedIn" && section === "tastings" && (
         <button
           className="add-btn"
@@ -278,6 +293,7 @@ type HeaderProps = {
   section: AppSection;
   onSectionChange: (section: AppSection) => void;
   formOpen: boolean;
+  refresh: RefreshState;
   menu: MenuState;
   onAdd: () => void;
   onCloseForm: () => void;
@@ -292,6 +308,7 @@ export function Header({
   section,
   onSectionChange,
   formOpen,
+  refresh,
   menu,
   onAdd,
   onCloseForm,
@@ -326,6 +343,7 @@ export function Header({
         auth={auth}
         section={section}
         formOpen={formOpen}
+        refresh={refresh}
         menu={menu}
         onAdd={onAdd}
         onCloseForm={onCloseForm}

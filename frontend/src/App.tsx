@@ -290,6 +290,16 @@ function AppFooter() {
   );
 }
 
+function useDataRefresh(tastings: ReturnType<typeof useTastings>) {
+  return useMemo(
+    () => ({
+      refreshing: tastings.refreshing,
+      onRefresh: tastings.refresh,
+    }),
+    [tastings.refreshing, tastings.refresh],
+  );
+}
+
 const App = () => {
   const authHook = useAuth();
   const tastings = useTastings(authHook.auth);
@@ -312,6 +322,7 @@ const App = () => {
     () => ({ open: authHook.menuOpen, setOpen: authHook.setMenuOpen }),
     [authHook.menuOpen, authHook.setMenuOpen],
   );
+  const dataRefresh = useDataRefresh(tastings);
   const handleRecipeDeleted = useCallback(() => {
     recipesHook.reload();
     handleBackToRecipes();
@@ -326,6 +337,7 @@ const App = () => {
         section={section}
         onSectionChange={setSection}
         formOpen={tastings.formOpen}
+        refresh={dataRefresh}
         menu={menu}
         onAdd={tastings.openAddForm}
         onCloseForm={tastings.closeForm}
