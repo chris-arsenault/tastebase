@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   deleteImage,
   deleteReview,
@@ -7,6 +7,7 @@ import {
   uploadRecipeImage,
 } from "../api";
 import { useRecorder } from "../hooks/useRecorder";
+import { renderMarkdown } from "../utils/recipeText";
 import type { RecipeImage, RecipeReview } from "../types";
 
 const formatDate = (val: string) => {
@@ -15,33 +16,15 @@ const formatDate = (val: string) => {
   return Number.isNaN(d.getTime()) ? val : d.toLocaleDateString();
 };
 
-function renderMarkdown(text: string): React.ReactNode[] {
-  const unescaped = text.replace(/\\n/g, "\n");
-  const paragraphs = unescaped.split(/\n\n/);
-  return paragraphs.map((para, pi) => {
-    const lines = para.split(/\n/);
-    const children: React.ReactNode[] = [];
-    lines.forEach((line, li) => {
-      if (li > 0) children.push(<br key={`br-${pi}-${li}`} />);
-      const parts = line.split(/(\*\*[^*]+\*\*)/g);
-      parts.forEach((part, partIdx) => {
-        const boldMatch = /^\*\*(.+)\*\*$/.exec(part);
-        if (boldMatch) {
-          children.push(
-            <strong key={`b-${pi}-${li}-${partIdx}`}>{boldMatch[1]}</strong>,
-          );
-        } else {
-          children.push(part);
-        }
-      });
-    });
-    return (
-      <p key={`p-${pi}`} className="recipe-notes-paragraph">
-        {children}
-      </p>
-    );
-  });
+const reviewElementId = (id: string) => `review-${id}`;
+
+function navigate(path: string) {
+  window.history.pushState(null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }
+
+const reviewPath = (recipeSlug: string, reviewId: string) =>
+  `/recipes/${recipeSlug}/reviews/${reviewId}`;
 
 export function RecipeImages({
   images,
@@ -90,14 +73,23 @@ export function RecipeImages({
 
 export function RecipeReviews({
   reviews,
+  recipeSlug,
+  selectedReviewId,
   token,
   onDeleted,
 }: Readonly<{
   reviews: RecipeReview[];
+  recipeSlug: string;
+  selectedReviewId: string | null;
   token: string;
   onDeleted: () => void;
 }>) {
-  if (reviews.length === 0) return null;
+  useEffect(() => {
+    if (!selectedReviewId) return;
+    const target = document.getElementById(reviewElementId(selectedReviewId));
+    target?.scrollIntoView({ block: "center" });
+  }, [selectedReviewId, reviews]);
+
   const handleDelete = (id: string) => {
     if (!token) return;
     deleteReview(id, token)
@@ -110,45 +102,119 @@ export function RecipeReviews({
       .then(onDeleted)
       .catch(() => {});
   };
+  if (reviews.length === 0) return null;
   return (
     <section className="recipe-reviews-section">
       <h3>Reviews</h3>
       {reviews.map((review) => (
-        <div key={review.id} className="recipe-review">
-          {review.status !== "complete" && review.status !== "error" && (
-            <span className="card-status">
-              {review.status.replace(/_/g, " ")}
-            </span>
-          )}
-          {review.status === "error" && review.processingError && (
-            <div className="card-error">{review.processingError}</div>
-          )}
-          {review.score !== null && (
-            <div className="recipe-review-score">Score: {review.score}/10</div>
-          )}
-          {review.notes && renderMarkdown(review.notes)}
-          <div className="recipe-review-footer">
-            <span className="recipe-review-date">
-              {formatDate(review.createdAt)}
-            </span>
-            {token && review.voiceKey && (
-              <button type="button" onClick={() => handleRerun(review.id)}>
-                Rerun
-              </button>
-            )}
-            {token && (
-              <button
-                type="button"
-                className="btn-danger"
-                onClick={() => handleDelete(review.id)}
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        </div>
+        <ReviewCard
+          key={review.id}
+          review={review}
+          recipeSlug={recipeSlug}
+          selected={selectedReviewId === review.id}
+          token={token}
+          onDelete={handleDelete}
+          onRerun={handleRerun}
+        />
       ))}
     </section>
+  );
+}
+
+function ReviewStatus({ review }: Readonly<{ review: RecipeReview }>) {
+  if (review.status === "complete") return null;
+  if (review.status === "error") {
+    return review.processingError ? (
+      <div className="card-error">{review.processingError}</div>
+    ) : null;
+  }
+  return (
+    <span className="card-status">{review.status.replace(/_/g, " ")}</span>
+  );
+}
+
+function ReviewActions({
+  review,
+  path,
+  token,
+  onDelete,
+  onRerun,
+}: Readonly<{
+  review: RecipeReview;
+  path: string;
+  token: string;
+  onDelete: (id: string) => void;
+  onRerun: (id: string) => void;
+}>) {
+  return (
+    <>
+      <a
+        className="recipe-review-link"
+        href={path}
+        onClick={(e) => {
+          e.preventDefault();
+          navigate(path);
+        }}
+      >
+        Link
+      </a>
+      {token && review.voiceKey && (
+        <button type="button" onClick={() => onRerun(review.id)}>
+          Rerun
+        </button>
+      )}
+      {token && (
+        <button
+          type="button"
+          className="btn-danger"
+          onClick={() => onDelete(review.id)}
+        >
+          Delete
+        </button>
+      )}
+    </>
+  );
+}
+
+function ReviewCard({
+  review,
+  recipeSlug,
+  selected,
+  token,
+  onDelete,
+  onRerun,
+}: Readonly<{
+  review: RecipeReview;
+  recipeSlug: string;
+  selected: boolean;
+  token: string;
+  onDelete: (id: string) => void;
+  onRerun: (id: string) => void;
+}>) {
+  const path = reviewPath(recipeSlug, review.id);
+  return (
+    <div
+      id={reviewElementId(review.id)}
+      className={`recipe-review${selected ? " recipe-review-selected" : ""}`}
+    >
+      <ReviewStatus review={review} />
+      {review.score !== null && (
+        <div className="recipe-review-score">Score: {review.score}/10</div>
+      )}
+      {review.notes && renderMarkdown(review.notes)}
+      <div className="recipe-review-footer">
+        <span className="recipe-review-date">
+          {formatDate(review.createdAt)}
+        </span>
+        <ReviewActions
+          review={review}
+          path={path}
+          token={token}
+          onDelete={onDelete}
+          onRerun={onRerun}
+        />
+      </div>
+    </div>
   );
 }
 

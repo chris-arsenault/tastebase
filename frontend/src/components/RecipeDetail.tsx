@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { deleteRecipe } from "../api";
 import { RecipeImages, RecipeReviews, ReviewCapture } from "./RecipeMedia";
 import type { RecipeFull } from "../types";
+import { renderMarkdown, slugify } from "../utils/recipeText";
 import {
   sourceLabels,
   formatTimer,
   formatAmount,
-  renderMarkdown,
   useRecipeFetch,
   buildIngredientMap,
   resolveTokens,
@@ -16,6 +16,7 @@ import {
 
 type RecipeDetailProps = {
   recipeId: string;
+  selectedReviewId: string | null;
   token: string;
   onClose: () => void;
   onDeleted: () => void;
@@ -232,10 +233,12 @@ function FixedTooltip({ data }: Readonly<{ data: TooltipData }>) {
 function RecipeBody({
   recipe,
   token,
+  selectedReviewId,
   onReviewSubmitted,
 }: Readonly<{
   recipe: RecipeFull;
   token: string;
+  selectedReviewId: string | null;
   onReviewSubmitted: () => void;
 }>) {
   const [servings, setServings] = useState(recipe.baseServings);
@@ -278,6 +281,8 @@ function RecipeBody({
       />
       <RecipeReviews
         reviews={recipe.reviews}
+        recipeSlug={slugify(recipe.title)}
+        selectedReviewId={selectedReviewId}
         token={token}
         onDeleted={onReviewSubmitted}
       />
@@ -340,6 +345,7 @@ function DeleteControls({
 
 export function RecipeDetail({
   recipeId,
+  selectedReviewId,
   token,
   onClose,
   onDeleted,
@@ -388,6 +394,7 @@ export function RecipeDetail({
         {recipe && (
           <RecipeBody
             recipe={recipe}
+            selectedReviewId={selectedReviewId}
             token={token}
             onReviewSubmitted={reload}
           />

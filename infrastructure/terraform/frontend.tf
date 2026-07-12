@@ -1,3 +1,19 @@
+locals {
+  recipe_og_query = "SELECT r.title, r.description, ri.image_url FROM recipes r LEFT JOIN LATERAL (SELECT image_url FROM recipe_images WHERE recipe_id = r.id ORDER BY created_at DESC LIMIT 1) ri ON true"
+
+  recipe_og_routes = [
+    for pattern in ["/recipes/:slug", "/recipes/:slug/reviews/:review_id"] : {
+      pattern     = pattern
+      query       = local.recipe_og_query
+      match_field = "title"
+      title       = "{{title}}"
+      description = "{{description}}"
+      image       = "{{image_url}}"
+      og_type     = "article"
+    }
+  ]
+}
+
 # Frontend: S3 static assets + OG Lambda for dynamic HTML via CloudFront
 
 module "frontend" {
@@ -25,17 +41,7 @@ module "frontend" {
       image       = "/tastebase-social.png"
     }
 
-    routes = [
-      {
-        pattern     = "/recipes/:slug"
-        query       = "SELECT r.title, r.description, ri.image_url FROM recipes r LEFT JOIN LATERAL (SELECT image_url FROM recipe_images WHERE recipe_id = r.id ORDER BY created_at DESC LIMIT 1) ri ON true"
-        match_field = "title"
-        title       = "{{title}}"
-        description = "{{description}}"
-        image       = "{{image_url}}"
-        og_type     = "article"
-      }
-    ]
+    routes = local.recipe_og_routes
 
     environment = local.db_env
   }

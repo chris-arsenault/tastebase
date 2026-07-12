@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchRecipe } from "../api";
+import { slugify } from "../utils/recipeText";
 import type { RecipeFull, RecipeIngredient } from "../types";
-
-export function slugify(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
 export function navigateToRecipe(slug: string) {
   window.history.pushState(null, "", `/recipes/${slug}`);
@@ -28,34 +20,6 @@ export const formatTimer = (s: number) => {
   if (s < 60) return `${s}s`;
   return r === 0 ? `${m}m` : `${m}m ${r}s`;
 };
-
-export function renderMarkdown(text: string): React.ReactNode[] {
-  const unescaped = text.replace(/\\n/g, "\n");
-  const paragraphs = unescaped.split(/\n\n/);
-  return paragraphs.map((para, pi) => {
-    const lines = para.split(/\n/);
-    const children: React.ReactNode[] = [];
-    lines.forEach((line, li) => {
-      if (li > 0) children.push(<br key={`br-${pi}-${li}`} />);
-      const parts = line.split(/(\*\*[^*]+\*\*)/g);
-      parts.forEach((part, partIdx) => {
-        const boldMatch = /^\*\*(.+)\*\*$/.exec(part);
-        if (boldMatch) {
-          children.push(
-            <strong key={`b-${pi}-${li}-${partIdx}`}>{boldMatch[1]}</strong>,
-          );
-        } else {
-          children.push(part);
-        }
-      });
-    });
-    return (
-      <p key={`p-${pi}`} className="recipe-notes-paragraph">
-        {children}
-      </p>
-    );
-  });
-}
 
 export const formatAmount = (n: number): string => {
   if (Number.isInteger(n)) return n.toString();

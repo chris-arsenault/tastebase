@@ -12,6 +12,7 @@ import { ViewModal } from "./components/ViewModal";
 import { DeleteModal } from "./components/DeleteModal";
 import { RecipeList } from "./components/RecipeList";
 import { RecipeDetail } from "./components/RecipeDetail";
+import { slugify } from "./utils/recipeText";
 import type { Recipe } from "./types";
 
 type AppSection = "tastings" | "recipes";
@@ -34,31 +35,35 @@ const themeClass: Record<string, string> = {
   all: "theme-sauce",
 };
 
-function slugify(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 type RouteState =
-  | { section: "tastings"; recipeSlug: null }
-  | { section: "recipes"; recipeSlug: null }
-  | { section: "recipes"; recipeSlug: string };
+  | { section: "tastings"; recipeSlug: null; reviewId: null }
+  | { section: "recipes"; recipeSlug: null; reviewId: null }
+  | { section: "recipes"; recipeSlug: string; reviewId: string | null };
+
+function trimTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path[end - 1] === "/") end -= 1;
+  return path.slice(0, end);
+}
 
 function parsePath(): RouteState {
   const path = window.location.pathname;
   if (path.startsWith("/recipes/")) {
-    const slug = path.slice("/recipes/".length);
-    if (slug) return { section: "recipes", recipeSlug: slug };
-    return { section: "recipes", recipeSlug: null };
+    const recipePath = trimTrailingSlashes(path.slice("/recipes/".length));
+    if (!recipePath) {
+      return { section: "recipes", recipeSlug: null, reviewId: null };
+    }
+    const [slug, segment, reviewId] = recipePath.split("/");
+    return {
+      section: "recipes",
+      recipeSlug: slug,
+      reviewId: segment === "reviews" && reviewId ? reviewId : null,
+    };
   }
   if (path === "/recipes") {
-    return { section: "recipes", recipeSlug: null };
+    return { section: "recipes", recipeSlug: null, reviewId: null };
   }
-  return { section: "tastings", recipeSlug: null };
+  return { section: "tastings", recipeSlug: null, reviewId: null };
 }
 
 function ContentArea({
@@ -273,6 +278,7 @@ function useRouter(recipes: Recipe[]) {
   return {
     section: route.section,
     selectedRecipe,
+    selectedReviewId: selectedRecipe ? route.reviewId : null,
     setSection,
     handleSelectRecipe,
     handleBackToRecipes,
@@ -314,6 +320,7 @@ const App = () => {
   const {
     section,
     selectedRecipe,
+    selectedReviewId,
     setSection,
     handleSelectRecipe,
     handleBackToRecipes,
@@ -365,6 +372,7 @@ const App = () => {
         <RecipeDetail
           key={selectedRecipe.id}
           recipeId={selectedRecipe.id}
+          selectedReviewId={selectedReviewId}
           token={authHook.auth.token}
           onClose={handleBackToRecipes}
           onDeleted={handleRecipeDeleted}

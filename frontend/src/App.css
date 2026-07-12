@@ -2988,8 +2988,14 @@
 .recipe-review {
   background: var(--aged-paper);
   border-radius: 8px;
+  border: 1px solid transparent;
   padding: 1rem;
   margin-top: 0.75rem;
+}
+
+.recipe-review-selected {
+  border-color: var(--ember);
+  box-shadow: 0 0 0 3px rgba(214, 56, 49, 0.16);
 }
 
 .recipe-review-score {
@@ -3004,6 +3010,17 @@
   margin-top: 0.5rem;
   font-size: 0.7rem;
   color: var(--soot);
+}
+
+.recipe-review-link {
+  color: var(--ember);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.recipe-review-link:hover {
+  text-decoration: underline;
 }
 
 /* Review Capture */
