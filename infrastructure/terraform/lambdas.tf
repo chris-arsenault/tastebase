@@ -74,14 +74,15 @@ module "api" {
     books-api = {
       binary = "${path.module}/../../backend/target/lambda/books-api/bootstrap"
       routes = [
-        { priority = 214, paths = ["/books/public"], methods = ["GET", "HEAD"], authenticated = false },
+        # This specific public route must run before the authenticated /books/* rule.
+        { priority = 209, paths = ["/books/public"], methods = ["GET", "HEAD"], authenticated = false },
         { priority = 215, paths = ["/books", "/books/*"], authenticated = true },
       ]
     }
     mcp-server = {
       binary = "${path.module}/../../backend/target/lambda/mcp-server/bootstrap"
       routes = [
-        { priority = 216, paths = ["/mcp", "/.well-known/*"], authenticated = false },
+        { priority = 214, paths = ["/mcp", "/.well-known/*"], authenticated = false },
       ]
       environment = { COGNITO_CLIENT_ID = module.cognito_mcp.client_id }
     }
