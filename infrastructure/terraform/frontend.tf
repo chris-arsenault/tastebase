@@ -37,7 +37,7 @@ module "frontend" {
 
     defaults = {
       title       = "Tastebase"
-      description = "Culinary platform — track tastings, save recipes, review dishes."
+      description = "Personal platform for tastings, recipes, and book recommendations."
       image       = "/tastebase-social.png"
     }
 

@@ -16,6 +16,8 @@ aws-config = { workspace = true }
 aws-sdk-s3 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+jsonwebtoken = { workspace = true }
+reqwest = { workspace = true }
 base64 = "0.22"
 rust_decimal = { version = "1", features = ["serde"] }
 ammonia = "4"

@@ -322,6 +322,42 @@ pub struct RecipeFull {
     pub images: Vec<RecipeImage>,
 }
 
+// -- Books --
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "book_status", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum BookStatus {
+    Recommended,
+    Reading,
+    Read,
+    DidNotFinish,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct BookRecommendation {
+    pub id: Uuid,
+    #[serde(skip_serializing)]
+    pub user_id: Uuid,
+    pub title: String,
+    pub author: String,
+    pub summary: String,
+    pub why_recommended: String,
+    pub status: BookStatus,
+    pub rating: Option<i16>,
+    pub writeup: String,
+    pub is_public: bool,
+    #[serde(with = "time::serde::rfc3339")]
+    pub recommended_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub read_at: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub updated_at: OffsetDateTime,
+}
+
 // -- Auth --
 
 #[derive(Debug, Clone)]
@@ -329,4 +365,37 @@ pub struct UserContext {
     pub sub: String,
     pub email: Option<String>,
     pub user_id: Option<Uuid>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BookRecommendation, BookStatus};
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    #[test]
+    fn public_book_json_omits_the_owner_identifier() {
+        let book = BookRecommendation {
+            id: Uuid::nil(),
+            user_id: Uuid::new_v4(),
+            title: "A Book".into(),
+            author: "An Author".into(),
+            summary: "Summary".into(),
+            why_recommended: "Reason".into(),
+            status: BookStatus::Read,
+            rating: Some(5),
+            writeup: "Excellent".into(),
+            is_public: true,
+            recommended_at: OffsetDateTime::UNIX_EPOCH,
+            read_at: Some(OffsetDateTime::UNIX_EPOCH),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
+        };
+
+        let json = serde_json::to_value(book).expect("book should serialize");
+        assert!(json.get("userId").is_none());
+        assert_eq!(json["whyRecommended"], "Reason");
+        assert_eq!(json["status"], "read");
+        assert_eq!(json["isPublic"], true);
+    }
 }

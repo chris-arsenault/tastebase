@@ -3,6 +3,8 @@ use crate::error::AppError;
 const MAX_NAME_LEN: usize = 1000;
 const MAX_NOTES_LEN: usize = 4000;
 const MAX_URL_LEN: usize = 2000;
+const MAX_BOOK_SUMMARY_LEN: usize = 6000;
+const MAX_BOOK_WRITEUP_LEN: usize = 6000;
 const MAX_BASE64_BYTES: usize = 10 * 1024 * 1024; // 10 MB
 
 fn check_len(field: &str, value: &str, max: usize) -> Result<(), AppError> {
@@ -120,4 +122,54 @@ pub fn validate_recipe_input(
         ));
     }
     Ok(())
+}
+
+pub fn validate_book_recommendation(
+    title: &str,
+    author: &str,
+    summary: &str,
+    why_recommended: &str,
+) -> Result<(), AppError> {
+    for (field, value, max) in [
+        ("title", title, MAX_NAME_LEN),
+        ("author", author, MAX_NAME_LEN),
+        ("summary", summary, MAX_BOOK_SUMMARY_LEN),
+        ("whyRecommended", why_recommended, MAX_BOOK_SUMMARY_LEN),
+    ] {
+        check_len(field, value, max)?;
+        if value.trim().is_empty() {
+            return Err(AppError::BadRequest(format!("{field} is required")));
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_book_review(rating: i16, writeup: &str) -> Result<(), AppError> {
+    check_range("rating", rating, 1, 5)?;
+    check_len("writeup", writeup, MAX_BOOK_WRITEUP_LEN)?;
+    if writeup.trim().is_empty() {
+        return Err(AppError::BadRequest("writeup is required".into()));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_book_recommendation, validate_book_review};
+
+    #[test]
+    fn book_recommendations_require_all_reader_facing_fields() {
+        let error = validate_book_recommendation("A title", "An author", "", "A reason")
+            .expect_err("empty summaries must be rejected");
+        assert_eq!(error.to_string(), "bad request: summary is required");
+    }
+
+    #[test]
+    fn book_reviews_require_a_one_to_five_rating_and_writeup() {
+        assert!(validate_book_review(1, "Not for me.").is_ok());
+        assert!(validate_book_review(5, "Excellent.").is_ok());
+        assert!(validate_book_review(0, "Too low.").is_err());
+        assert!(validate_book_review(6, "Too high.").is_err());
+        assert!(validate_book_review(4, "   ").is_err());
+    }
 }

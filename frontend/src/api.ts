@@ -20,7 +20,7 @@ const STORAGE_FORBIDDEN_MESSAGE =
 
 type ErrorResponse = { message?: string };
 
-const fetchApi = async (
+export const fetchApi = async (
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> => {
@@ -56,7 +56,7 @@ const apiErrorMessage = async (
   return fallback;
 };
 
-const assertApiOk = async (
+export const assertApiOk = async (
   response: Response,
   fallback: string,
 ): Promise<void> => {

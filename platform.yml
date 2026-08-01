@@ -9,6 +9,7 @@ rust_artifacts:
   lambdas:
     - tastings-api
     - recipes-api
+    - books-api
     - mcp-server
     - processing
 rust_telemetry_adoption: true

@@ -42,7 +42,9 @@ pub async fn resolve_user(
     }
 
     // JIT provision: create user + mapping in a transaction
-    let email = email.unwrap_or("");
+    let email = email
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(cognito_sub);
     let mut tx = pool.begin().await?;
 
     let user: User = sqlx::query_as(

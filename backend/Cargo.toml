@@ -4,6 +4,7 @@ members = [
     "shared",
     "tastings-api",
     "recipes-api",
+    "books-api",
     "mcp-server",
     "processing",
 ]

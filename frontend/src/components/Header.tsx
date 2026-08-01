@@ -1,9 +1,8 @@
 import { useCallback, type SubmitEvent } from "react";
 import type { AuthState } from "../hooks/useAuth";
 import type { MfaSetupRedirect, SoftwareTokenMfaChallenge } from "../auth";
-import type { Filters, ProductType } from "../types";
+import type { AppSection, Filters, ProductType } from "../types";
 
-type AppSection = "tastings" | "recipes";
 type AuthSubmitHandler = (
   event: SubmitEvent<HTMLFormElement>,
   onError: (msg: string) => void,
@@ -179,6 +178,12 @@ function SectionToggle({
       >
         Recipes
       </button>
+      <button
+        className={section === "books" ? "active" : ""}
+        onClick={() => onSectionChange("books")}
+      >
+        Books
+      </button>
     </div>
   );
 }
@@ -325,7 +330,9 @@ export function Header({
       <div className="header-brand">
         <h1>Tastebase</h1>
         <span className="header-tagline">
-          {brandTaglines[filters.productType] ?? "Culinary Log"}
+          {section === "books"
+            ? "Reading Log"
+            : (brandTaglines[filters.productType] ?? "Culinary Log")}
         </span>
       </div>
 

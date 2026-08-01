@@ -11,6 +11,8 @@ use shared::error::AppError;
 use shared::types::{RecipeSource, UnitType};
 use uuid::Uuid;
 
+mod books;
+
 const SERVICE_NAME: &str = "tastebase-mcp-server";
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
 
@@ -142,7 +144,7 @@ async fn mcp_post(
         .observe(async move {
             tracing::info!(method = %method, is_notification, "MCP request");
 
-            let user = match authenticate(&headers) {
+            let user = match authenticate(&headers).await {
                 Ok(u) => {
                     tracing::info!(user_sub = %u.sub, method = %method, "MCP auth OK");
                     u
@@ -174,10 +176,10 @@ async fn mcp_post(
 
 // -- Auth --
 
-fn authenticate(headers: &HeaderMap) -> Result<shared::types::UserContext, AppError> {
+async fn authenticate(headers: &HeaderMap) -> Result<shared::types::UserContext, AppError> {
     let auth_header = headers.get("authorization").and_then(|v| v.to_str().ok());
     let token = auth::extract_bearer(auth_header)?;
-    auth::decode_token(token)
+    auth::verify_token(token).await
 }
 
 // -- JSON-RPC types --
@@ -249,6 +251,8 @@ fn handle_tools_list(msg: McpMessage) -> Result<JsonRpcResponse, JsonRpcResponse
         list_recipes_tool_def(),
         save_recipe_tool_def(),
         update_recipe_tool_def(),
+        books::list_book_recommendations_tool_def(),
+        books::save_book_recommendations_tool_def(),
     ];
     tracing::info!(tool_count = tools.len(), "tools/list");
     Ok(jsonrpc_result(
@@ -461,7 +465,7 @@ fn update_recipe_tool_def() -> serde_json::Value {
     })
 }
 
-fn tool_text_response(
+pub(crate) fn tool_text_response(
     msg_id: Option<serde_json::Value>,
     text: String,
     is_error: bool,
@@ -475,7 +479,7 @@ fn tool_text_response(
     )
 }
 
-fn tool_json_response<T: serde::Serialize>(
+pub(crate) fn tool_json_response<T: serde::Serialize>(
     msg_id: Option<serde_json::Value>,
     value: &T,
 ) -> JsonRpcResponse {
@@ -616,6 +620,20 @@ async fn handle_tools_call(
                 .cloned()
                 .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing arguments"))?;
             Ok(dispatch_update_recipe(msg.id, state, user, arguments).await)
+        }
+        "list_book_recommendations" => {
+            let arguments = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
+            Ok(books::dispatch_list_book_recommendations(msg.id, state, user, arguments).await)
+        }
+        "save_book_recommendations" => {
+            let arguments = params
+                .get("arguments")
+                .cloned()
+                .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing arguments"))?;
+            Ok(books::dispatch_save_book_recommendations(msg.id, state, user, arguments).await)
         }
         _ => Err(jsonrpc_error(
             msg.id,

@@ -1,9 +1,11 @@
 import "./App.css";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { useTastings } from "./hooks/useTastings";
 import { useFilters } from "./hooks/useFilters";
 import { useRecipes } from "./hooks/useRecipes";
+import { useBooks } from "./hooks/useBooks";
+import { useAppRouter } from "./hooks/useAppRouter";
 import { Header } from "./components/Header";
 import { SearchBar } from "./components/SearchBar";
 import { TastingCard } from "./components/TastingCard";
@@ -12,10 +14,8 @@ import { ViewModal } from "./components/ViewModal";
 import { DeleteModal } from "./components/DeleteModal";
 import { RecipeList } from "./components/RecipeList";
 import { RecipeDetail } from "./components/RecipeDetail";
-import { slugify } from "./utils/recipeText";
+import { BooksSection } from "./components/BooksSection";
 import type { Recipe } from "./types";
-
-type AppSection = "tastings" | "recipes";
 
 const searchPlaceholders: Record<string, string> = {
   drink: "Search drinks...",
@@ -34,37 +34,6 @@ const themeClass: Record<string, string> = {
   sauce: "theme-sauce",
   all: "theme-sauce",
 };
-
-type RouteState =
-  | { section: "tastings"; recipeSlug: null; reviewId: null }
-  | { section: "recipes"; recipeSlug: null; reviewId: null }
-  | { section: "recipes"; recipeSlug: string; reviewId: string | null };
-
-function trimTrailingSlashes(path: string): string {
-  let end = path.length;
-  while (end > 0 && path[end - 1] === "/") end -= 1;
-  return path.slice(0, end);
-}
-
-function parsePath(): RouteState {
-  const path = window.location.pathname;
-  if (path.startsWith("/recipes/")) {
-    const recipePath = trimTrailingSlashes(path.slice("/recipes/".length));
-    if (!recipePath) {
-      return { section: "recipes", recipeSlug: null, reviewId: null };
-    }
-    const [slug, segment, reviewId] = recipePath.split("/");
-    return {
-      section: "recipes",
-      recipeSlug: slug,
-      reviewId: segment === "reviews" && reviewId ? reviewId : null,
-    };
-  }
-  if (path === "/recipes") {
-    return { section: "recipes", recipeSlug: null, reviewId: null };
-  }
-  return { section: "tastings", recipeSlug: null, reviewId: null };
-}
 
 function ContentArea({
   tastings,
@@ -244,47 +213,6 @@ function RecipesSection({
   );
 }
 
-function navigate(path: string) {
-  window.history.pushState(null, "", path);
-  window.dispatchEvent(new PopStateEvent("popstate"));
-}
-
-function useRouter(recipes: Recipe[]) {
-  const [route, setRoute] = useState<RouteState>(parsePath);
-
-  useEffect(() => {
-    const onNav = () => setRoute(parsePath());
-    window.addEventListener("popstate", onNav);
-    return () => window.removeEventListener("popstate", onNav);
-  }, []);
-
-  const setSection = useCallback((s: AppSection) => {
-    navigate(s === "recipes" ? "/recipes" : "/");
-  }, []);
-
-  const handleSelectRecipe = useCallback((recipe: Recipe) => {
-    navigate(`/recipes/${slugify(recipe.title)}`);
-  }, []);
-
-  const handleBackToRecipes = useCallback(() => {
-    navigate("/recipes");
-  }, []);
-
-  const selectedRecipe = useMemo(() => {
-    if (!route.recipeSlug) return null;
-    return recipes.find((r) => slugify(r.title) === route.recipeSlug) ?? null;
-  }, [route.recipeSlug, recipes]);
-
-  return {
-    section: route.section,
-    selectedRecipe,
-    selectedReviewId: selectedRecipe ? route.reviewId : null,
-    setSection,
-    handleSelectRecipe,
-    handleBackToRecipes,
-  };
-}
-
 function AppFooter() {
   return (
     <footer className="app-footer">
@@ -306,6 +234,23 @@ function useDataRefresh(tastings: ReturnType<typeof useTastings>) {
   );
 }
 
+function useMenuState(authHook: ReturnType<typeof useAuth>) {
+  return useMemo(
+    () => ({ open: authHook.menuOpen, setOpen: authHook.setMenuOpen }),
+    [authHook.menuOpen, authHook.setMenuOpen],
+  );
+}
+
+function useRecipeDeletion(
+  recipesHook: ReturnType<typeof useRecipes>,
+  handleBackToRecipes: () => void,
+) {
+  return useCallback(() => {
+    recipesHook.reload();
+    handleBackToRecipes();
+  }, [recipesHook, handleBackToRecipes]);
+}
+
 const App = () => {
   const authHook = useAuth();
   const tastings = useTastings(authHook.auth);
@@ -317,6 +262,7 @@ const App = () => {
     resetFilters,
   } = useFilters(tastings.tastings);
   const recipesHook = useRecipes();
+  const booksHook = useBooks(authHook.auth);
   const {
     section,
     selectedRecipe,
@@ -324,16 +270,13 @@ const App = () => {
     setSection,
     handleSelectRecipe,
     handleBackToRecipes,
-  } = useRouter(recipesHook.recipes);
-  const menu = useMemo(
-    () => ({ open: authHook.menuOpen, setOpen: authHook.setMenuOpen }),
-    [authHook.menuOpen, authHook.setMenuOpen],
-  );
+  } = useAppRouter(recipesHook.recipes);
+  const menu = useMenuState(authHook);
   const dataRefresh = useDataRefresh(tastings);
-  const handleRecipeDeleted = useCallback(() => {
-    recipesHook.reload();
-    handleBackToRecipes();
-  }, [recipesHook, handleBackToRecipes]);
+  const handleRecipeDeleted = useRecipeDeletion(
+    recipesHook,
+    handleBackToRecipes,
+  );
 
   return (
     <div className={`app ${themeClass[filters.productType] ?? "theme-sauce"}`}>
@@ -378,6 +321,7 @@ const App = () => {
           onDeleted={handleRecipeDeleted}
         />
       )}
+      {section === "books" && <BooksSection booksHook={booksHook} />}
       <AppFooter />
     </div>
   );

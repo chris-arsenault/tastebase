@@ -1,6 +1,6 @@
 # Tastebase
 
-General culinary platform — tasting tracker + recipe storage with Claude.ai MCP integration.
+Personal tasting, recipe, and reading platform with Claude.ai MCP integration.
 Evolved from scorchbook (hot sauce tracker). Data fully migrated, scorchbook decommissioned.
 
 ## Architecture
@@ -18,6 +18,7 @@ Evolved from scorchbook (hot sauce tracker). Data fully migrated, scorchbook dec
 |-------|---------|--------|
 | `tastings-api` | ALB HTTP | `/tastings*` |
 | `recipes-api` | ALB HTTP | `/recipes*` |
+| `books-api` | ALB HTTP | `/books*` |
 | `mcp-server` | ALB HTTP | `/mcp`, `/.well-known/*` |
 | `processing` | Lambda.Invoke (async) | N/A — event-driven |
 
@@ -30,11 +31,12 @@ The `processing` crate has internal modules:
 
 ## Frontend
 
-Vite + React SPA with two sections:
+Vite + React SPA with three sections:
 - **Tastings** — product tasting tracker with photo/voice capture and AI enrichment (ported from scorchbook)
 - **Recipes** — recipe browser for Claude-saved recipes (RecipeList grid + RecipeDetail modal)
+- **Books** — private Claude recommendations with reading state, 1–5 ratings, writeups, and opt-in public reviews
 
-Section toggle in the header switches between the two. Product type toggle (sauce/drink/all) only shows in tastings section.
+Section toggle in the header switches between them. Product type toggle (sauce/drink/all) only shows in tastings section.
 
 ## Build & Deploy
 
@@ -56,7 +58,8 @@ runtime query strings (not compile-time checked).
 
 Schema: `users` + `cognito_users` (shared identity), `tastings` (tasting records),
 `recipes` + `recipe_ingredients` + `recipe_steps` + `collections` (recipe system),
-`recipe_reviews` + `recipe_images` (recipe media and reviews).
+`recipe_reviews` + `recipe_images` (recipe media and reviews), and
+`book_recommendations` (private reading state and reader-controlled public reviews).
 
 ## Platform Integration
 
@@ -65,8 +68,8 @@ Follows `~/src/ahara/INTEGRATION.md`. Registered in ahara-control and ahara-serv
 ## Key Decisions
 
 - ALB routes by path prefix to separate Lambdas (no API Gateway)
-- ALB jwt-validation for tastings/recipes write routes; MCP uses app-level auth for WWW-Authenticate header
-- Public reads (GET) have no jwt-validation; writes require it
+- ALB jwt-validation for tastings/recipes write routes and all private book routes; MCP uses app-level auth for WWW-Authenticate header
+- Tastings/recipes and explicitly published book reviews support public reads; private book recommendations remain owner-scoped
 - Processing Lambda is invoked asynchronously for media enrichment (tastings + recipe reviews)
 - S3 for media blobs (presigned upload URLs), PostgreSQL for structured data
 - OG Lambda generates HTML with per-recipe OpenGraph tags; CloudFront caches at edge

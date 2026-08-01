@@ -9,6 +9,7 @@ export type NutritionFacts = {
 };
 
 export type ProductType = "sauce" | "drink";
+export type AppSection = "tastings" | "recipes" | "books";
 
 export type TastingRecord = {
   id: string;
@@ -147,4 +148,23 @@ export type RecipeFull = Recipe & {
   steps: RecipeStep[];
   reviews: RecipeReview[];
   images: RecipeImage[];
+};
+
+// Book types
+export type BookStatus = "recommended" | "reading" | "read" | "did_not_finish";
+
+export type BookRecommendation = {
+  id: string;
+  title: string;
+  author: string;
+  summary: string;
+  whyRecommended: string;
+  status: BookStatus;
+  rating: number | null;
+  writeup: string;
+  isPublic: boolean;
+  recommendedAt: string;
+  readAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };

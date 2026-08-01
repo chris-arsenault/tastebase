@@ -71,12 +71,19 @@ module "api" {
         CLOUDFRONT_DISTRIBUTION_ID = module.frontend.distribution_id
       }
     }
+    books-api = {
+      binary = "${path.module}/../../backend/target/lambda/books-api/bootstrap"
+      routes = [
+        { priority = 214, paths = ["/books/public"], methods = ["GET", "HEAD"], authenticated = false },
+        { priority = 215, paths = ["/books", "/books/*"], authenticated = true },
+      ]
+    }
     mcp-server = {
       binary = "${path.module}/../../backend/target/lambda/mcp-server/bootstrap"
       routes = [
-        { priority = 214, paths = ["/mcp", "/.well-known/*"], authenticated = false },
+        { priority = 216, paths = ["/mcp", "/.well-known/*"], authenticated = false },
       ]
-      environment = { COGNITO_CLIENT_ID = module.cognito_app.client_id }
+      environment = { COGNITO_CLIENT_ID = module.cognito_mcp.client_id }
     }
   }
 }
