@@ -9,7 +9,7 @@ use crate::{JsonRpcResponse, mcp_operation, tool_json_response, tool_text_respon
 pub(crate) fn list_book_recommendations_tool_def() -> serde_json::Value {
     serde_json::json!({
         "name": "list_book_recommendations",
-        "description": "List this user's book recommendation history, including reading status, 1-5 ratings, writeups, and visibility. Call this before making another round of recommendations so prior suggestions and feedback inform the next choices. Results are private to the authenticated user.",
+        "description": "List the Tastebase owner's book recommendation history, including reading status, 1-5 ratings, writeups, and visibility. Call this before making another round of recommendations so prior suggestions and feedback inform the next choices. Results are private unless the owner has explicitly shared a review.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -26,7 +26,7 @@ pub(crate) fn list_book_recommendations_tool_def() -> serde_json::Value {
 pub(crate) fn save_book_recommendations_tool_def() -> serde_json::Value {
     serde_json::json!({
         "name": "save_book_recommendations",
-        "description": "Save one or more book recommendations to the authenticated user's private Tastebase shelf. Use this when giving the user a round of recommendations. Recommending the same title and author again refreshes its summary and reason without erasing reading status or feedback.",
+        "description": "Save one or more book recommendations to the private Tastebase shelf. Use this when giving the owner a round of recommendations. Recommending the same title and author again refreshes its summary and reason without erasing reading status or feedback.",
         "inputSchema": {
             "type": "object",
             "required": ["recommendations"],
@@ -84,7 +84,7 @@ struct BookRecommendationParam {
 pub(crate) async fn dispatch_list_book_recommendations(
     msg_id: Option<serde_json::Value>,
     state: &AppState,
-    user: &UserContext,
+    _user: &UserContext,
     arguments: serde_json::Value,
 ) -> JsonRpcResponse {
     let params: ListBookRecommendationsParams = match serde_json::from_value(arguments) {
@@ -98,7 +98,7 @@ pub(crate) async fn dispatch_list_book_recommendations(
         .with_detail("book.status_filter", params.status.is_some());
 
     match operation
-        .observe(async { list_book_recommendations(state, user, params.status).await })
+        .observe(async { list_book_recommendations(state, params.status).await })
         .await
     {
         Ok(result) => tool_json_response(msg_id, &result),
@@ -116,7 +116,7 @@ pub(crate) async fn dispatch_list_book_recommendations(
 pub(crate) async fn dispatch_save_book_recommendations(
     msg_id: Option<serde_json::Value>,
     state: &AppState,
-    user: &UserContext,
+    _user: &UserContext,
     arguments: serde_json::Value,
 ) -> JsonRpcResponse {
     let params: SaveBookRecommendationsParams = match serde_json::from_value(arguments) {
@@ -133,7 +133,7 @@ pub(crate) async fn dispatch_save_book_recommendations(
         );
 
     match operation
-        .observe(async { save_book_recommendations(state, user, params).await })
+        .observe(async { save_book_recommendations(state, params).await })
         .await
     {
         Ok(result) => tool_json_response(msg_id, &result),
@@ -150,36 +150,25 @@ pub(crate) async fn dispatch_save_book_recommendations(
     }
 }
 
-async fn resolve_user_id(state: &AppState, user: &UserContext) -> Result<Uuid, AppError> {
-    shared::db::resolve_user(&state.db, &user.sub, user.email.as_deref())
-        .await
-        .map_err(AppError::from)
-}
-
 async fn list_book_recommendations(
     state: &AppState,
-    user: &UserContext,
     status: Option<BookStatus>,
 ) -> Result<serde_json::Value, AppError> {
-    let user_id = resolve_user_id(state, user).await?;
     let books: Vec<BookRecommendation> = sqlx::query_as(
         "SELECT * FROM book_recommendations
-         WHERE user_id = $1
-           AND ($2::book_status IS NULL OR status = $2)
+         WHERE ($1::book_status IS NULL OR status = $1)
          ORDER BY recommended_at DESC",
     )
-    .bind(user_id)
     .bind(status)
     .fetch_all(&state.db)
     .await?;
 
-    tracing::info!(user_id = %user_id, count = books.len(), "book history listed via MCP");
+    tracing::info!(count = books.len(), "book history listed via MCP");
     Ok(serde_json::json!({ "recommendations": books }))
 }
 
 async fn save_book_recommendations(
     state: &AppState,
-    user: &UserContext,
     params: SaveBookRecommendationsParams,
 ) -> Result<serde_json::Value, AppError> {
     if params.recommendations.is_empty() || params.recommendations.len() > 20 {
@@ -196,7 +185,6 @@ async fn save_book_recommendations(
         )?;
     }
 
-    let user_id = resolve_user_id(state, user).await?;
     let mut transaction = state.db.begin().await?;
     let mut saved = Vec::with_capacity(params.recommendations.len());
 
@@ -221,9 +209,9 @@ async fn save_book_recommendations(
         )?;
         let row: (Uuid, String, String) = sqlx::query_as(
             "INSERT INTO book_recommendations
-               (id, user_id, title, author, summary, why_recommended)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             ON CONFLICT (user_id, lower(title), lower(author))
+               (id, title, author, summary, why_recommended)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (lower(title), lower(author))
              DO UPDATE SET
                summary = EXCLUDED.summary,
                why_recommended = EXCLUDED.why_recommended,
@@ -231,7 +219,6 @@ async fn save_book_recommendations(
              RETURNING id, title, author",
         )
         .bind(Uuid::new_v4())
-        .bind(user_id)
         .bind(title)
         .bind(author)
         .bind(summary)
@@ -246,10 +233,10 @@ async fn save_book_recommendations(
     }
 
     transaction.commit().await?;
-    tracing::info!(user_id = %user_id, count = saved.len(), "book recommendations saved via MCP");
+    tracing::info!(count = saved.len(), "book recommendations saved via MCP");
     Ok(serde_json::json!({
         "recommendations": saved,
         "url": "https://tastebase.ahara.io/books",
-        "message": "Saved privately to the user's Books shelf."
+        "message": "Saved to the private Books shelf."
     }))
 }

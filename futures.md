@@ -29,7 +29,7 @@ conversations.
 
 ## Recipe Editing In-App
 
-Users may want to edit Claude-sourced recipes. Add:
+Add editing for Claude-sourced recipes:
 - `dirty` flag or version lineage on recipes
 - Edit UI respecting round-trip fidelity (ingredient tokens in steps)
 - Conflict detection if Claude re-saves the same recipe
@@ -39,7 +39,7 @@ Users may want to edit Claude-sourced recipes. Add:
 Recipes and tastings are currently public-read. When per-item visibility controls
 are needed:
 - Add `visibility` enum (`public`, `private`, `unlisted`) to both tables
-- Update read-path queries to filter by visibility + ownership
+- Update read-path queries to filter by visibility
 - Shareable links for unlisted items
 
 ## Dynamic Client Registration (DCR)
@@ -53,7 +53,7 @@ Eliminate the Claude.ai copy-paste setup for MCP connector:
 ## Duplicate Recipe Detection
 
 Claude can call `save_recipe` twice for the same recipe. Options:
-- Upsert on `(user_id, title)` hash
+- Upsert on a normalized title hash
 - Surface a conflict response to Claude for user resolution
 - Content-hash-based dedup
 

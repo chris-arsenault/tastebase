@@ -59,7 +59,7 @@ runtime query strings (not compile-time checked).
 Schema: `users` + `cognito_users` (shared identity), `tastings` (tasting records),
 `recipes` + `recipe_ingredients` + `recipe_steps` + `collections` (recipe system),
 `recipe_reviews` + `recipe_images` (recipe media and reviews), and
-`book_recommendations` (private reading state and reader-controlled public reviews).
+`book_recommendations` (single-owner private reading state and explicitly public reviews).
 
 ## Platform Integration
 
@@ -69,7 +69,7 @@ Follows `~/src/ahara/INTEGRATION.md`. Registered in ahara-control and ahara-serv
 
 - ALB routes by path prefix to separate Lambdas (no API Gateway)
 - ALB jwt-validation for tastings/recipes write routes and all private book routes; MCP uses app-level auth for WWW-Authenticate header
-- Tastings/recipes and explicitly published book reviews support public reads; private book recommendations remain owner-scoped
+- Tastebase has one authenticated owner; anonymous visitors can read tastings, recipes, and explicitly published book reviews
 - Processing Lambda is invoked asynchronously for media enrichment (tastings + recipe reviews)
 - S3 for media blobs (presigned upload URLs), PostgreSQL for structured data
 - OG Lambda generates HTML with per-recipe OpenGraph tags; CloudFront caches at edge

@@ -8,7 +8,7 @@ Personal tasting, recipe, and reading platform with Claude.ai MCP integration.
 - **Backend**: Rust Lambda functions behind shared ALB
   - `tastings-api` — tasting CRUD, media upload, async processing trigger
   - `recipes-api` — recipe CRUD with ingredients and steps
-  - `books-api` — private book recommendations, reader reviews, and opt-in public shelf
+  - `books-api` — private book recommendations, owner reviews, and opt-in public sharing
   - `mcp-server` — MCP tools for recipes and personalized book recommendation rounds
   - `processing` — async enrichment pipeline (Bedrock image analysis, Transcribe voice, nutrition/ingredient extraction)
 - **Database**: PostgreSQL (shared platform RDS)
@@ -21,9 +21,9 @@ Connect Claude.ai to the Tastebase MCP server, then ask for book recommendations
 
 - save title, author, summary, and a personalized recommendation reason;
 - read prior recommendations, reading status, ratings, and writeups before suggesting more books;
-- refresh a repeated title without erasing existing reader feedback.
+- refresh a repeated title without erasing existing feedback.
 
-Recommendations are private to the authenticated account by default. After saving a 1–5 rating and a non-empty writeup in the Books section, the reader can explicitly publish that review to the public bookshelf.
+Tastebase has one authenticated owner. Recommendations, reading state, ratings, and writeups are private by default. After the owner saves a 1–5 rating and a non-empty writeup, they can explicitly publish that review for anonymous visitors to read.
 
 ## URLs
 

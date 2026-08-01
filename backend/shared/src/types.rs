@@ -338,8 +338,6 @@ pub enum BookStatus {
 #[serde(rename_all = "camelCase")]
 pub struct BookRecommendation {
     pub id: Uuid,
-    #[serde(skip_serializing)]
-    pub user_id: Uuid,
     pub title: String,
     pub author: String,
     pub summary: String,
@@ -374,10 +372,9 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn public_book_json_omits_the_owner_identifier() {
+    fn book_json_matches_the_single_owner_contract() {
         let book = BookRecommendation {
             id: Uuid::nil(),
-            user_id: Uuid::new_v4(),
             title: "A Book".into(),
             author: "An Author".into(),
             summary: "Summary".into(),

@@ -280,7 +280,7 @@ fn list_recipes_tool_def() -> serde_json::Value {
 fn save_recipe_tool_def() -> serde_json::Value {
     serde_json::json!({
         "name": "save_recipe",
-        "description": "Save a recipe to the user's Tastebase account. Only call this after presenting the full recipe and receiving explicit user confirmation to save it. All required fields must be provided — the call will fail with a descriptive error if any are missing.",
+        "description": "Save a recipe to Tastebase. Only call this after presenting the full recipe and receiving explicit user confirmation to save it. All required fields must be provided — the call will fail with a descriptive error if any are missing.",
         "inputSchema": {
             "type": "object",
             "required": ["title", "description", "base_servings", "notes", "ingredients", "steps"],

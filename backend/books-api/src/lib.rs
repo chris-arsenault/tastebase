@@ -6,7 +6,7 @@ use serde::Deserialize;
 use shared::AppState;
 use shared::auth::RequireAuth;
 use shared::error::AppError;
-use shared::types::{BookRecommendation, BookStatus, UserContext};
+use shared::types::{BookRecommendation, BookStatus};
 use uuid::Uuid;
 
 pub const SERVICE_NAME: &str = "tastebase-books-api";
@@ -15,22 +15,14 @@ fn book_operation(state: &AppState, name: &'static str) -> Operation {
     Operation::new(state.telemetry.clone(), name).with_domain("tastebase.books")
 }
 
-async fn resolve_user_id(state: &AppState, user: &UserContext) -> Result<Uuid, AppError> {
-    shared::db::resolve_user(&state.db, &user.sub, user.email.as_deref())
-        .await
-        .map_err(AppError::from)
-}
-
 async fn list_books(
     State(state): State<AppState>,
-    RequireAuth(user): RequireAuth,
+    RequireAuth(_user): RequireAuth,
 ) -> Result<Json<serde_json::Value>, AppError> {
     book_operation(&state, "tastebase.books.list")
         .observe(async move {
-            let user_id = resolve_user_id(&state, &user).await?;
             let books: Vec<BookRecommendation> = sqlx::query_as(
                 "SELECT * FROM book_recommendations
-                 WHERE user_id = $1
                  ORDER BY
                    CASE status
                      WHEN 'reading' THEN 0
@@ -40,11 +32,10 @@ async fn list_books(
                    END,
                    recommended_at DESC",
             )
-            .bind(user_id)
             .fetch_all(&state.db)
             .await?;
 
-            tracing::info!(user_id = %user_id, count = books.len(), "books listed");
+            tracing::info!(count = books.len(), "books listed");
             Ok(Json(serde_json::json!({ "data": books })))
         })
         .await
@@ -77,14 +68,13 @@ struct UpdateStatusInput {
 async fn update_status(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-    RequireAuth(user): RequireAuth,
+    RequireAuth(_user): RequireAuth,
     Json(input): Json<UpdateStatusInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     book_operation(&state, "tastebase.books.update_status")
         .with_detail("book.id", id.to_string())
         .with_detail("book.status", format!("{:?}", input.status))
         .observe(async move {
-            let user_id = resolve_user_id(&state, &user).await?;
             let book: BookRecommendation = sqlx::query_as(
                 "UPDATE book_recommendations
                  SET status = $1,
@@ -93,17 +83,16 @@ async fn update_status(
                        ELSE read_at
                      END,
                      updated_at = now()
-                 WHERE id = $2 AND user_id = $3
+                 WHERE id = $2
                  RETURNING *",
             )
             .bind(input.status)
             .bind(id)
-            .bind(user_id)
             .fetch_optional(&state.db)
             .await?
             .ok_or(AppError::NotFound)?;
 
-            tracing::info!(user_id = %user_id, book_id = %id, "book status updated");
+            tracing::info!(book_id = %id, "book status updated");
             Ok(Json(serde_json::json!({ "data": book })))
         })
         .await
@@ -118,14 +107,13 @@ struct SaveReviewInput {
 async fn save_review(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-    RequireAuth(user): RequireAuth,
+    RequireAuth(_user): RequireAuth,
     Json(input): Json<SaveReviewInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     book_operation(&state, "tastebase.books.save_review")
         .with_detail("book.id", id.to_string())
         .with_detail("book.rating", input.rating as i64)
         .observe(async move {
-            let user_id = resolve_user_id(&state, &user).await?;
             let writeup = shared::sanitize::clean(&input.writeup).trim().to_owned();
             shared::validate::validate_book_review(input.rating, &writeup)?;
             let book: BookRecommendation = sqlx::query_as(
@@ -141,18 +129,17 @@ async fn save_review(
                        ELSE COALESCE(read_at, now())
                      END,
                      updated_at = now()
-                 WHERE id = $3 AND user_id = $4
+                 WHERE id = $3
                  RETURNING *",
             )
             .bind(input.rating)
             .bind(writeup)
             .bind(id)
-            .bind(user_id)
             .fetch_optional(&state.db)
             .await?
             .ok_or(AppError::NotFound)?;
 
-            tracing::info!(user_id = %user_id, book_id = %id, "book review saved");
+            tracing::info!(book_id = %id, "book review saved");
             Ok(Json(serde_json::json!({ "data": book })))
         })
         .await
@@ -167,22 +154,19 @@ struct UpdateVisibilityInput {
 async fn update_visibility(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-    RequireAuth(user): RequireAuth,
+    RequireAuth(_user): RequireAuth,
     Json(input): Json<UpdateVisibilityInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     book_operation(&state, "tastebase.books.update_visibility")
         .with_detail("book.id", id.to_string())
         .with_detail("book.is_public", input.is_public)
         .observe(async move {
-            let user_id = resolve_user_id(&state, &user).await?;
-            let current: BookRecommendation = sqlx::query_as(
-                "SELECT * FROM book_recommendations WHERE id = $1 AND user_id = $2",
-            )
-            .bind(id)
-            .bind(user_id)
-            .fetch_optional(&state.db)
-            .await?
-            .ok_or(AppError::NotFound)?;
+            let current: BookRecommendation =
+                sqlx::query_as("SELECT * FROM book_recommendations WHERE id = $1")
+                    .bind(id)
+                    .fetch_optional(&state.db)
+                    .await?
+                    .ok_or(AppError::NotFound)?;
 
             if input.is_public && (current.rating.is_none() || current.writeup.trim().is_empty()) {
                 return Err(AppError::BadRequest(
@@ -193,16 +177,15 @@ async fn update_visibility(
             let book: BookRecommendation = sqlx::query_as(
                 "UPDATE book_recommendations
                  SET is_public = $1, updated_at = now()
-                 WHERE id = $2 AND user_id = $3
+                 WHERE id = $2
                  RETURNING *",
             )
             .bind(input.is_public)
             .bind(id)
-            .bind(user_id)
             .fetch_one(&state.db)
             .await?;
 
-            tracing::info!(user_id = %user_id, book_id = %id, is_public = input.is_public, "book visibility updated");
+            tracing::info!(book_id = %id, is_public = input.is_public, "book visibility updated");
             Ok(Json(serde_json::json!({ "data": book })))
         })
         .await

@@ -22,7 +22,7 @@ function BooksIntro({ booksHook }: Readonly<{ booksHook: BooksHook }>) {
         <p>
           {booksHook.isOwnerView
             ? "Recommendations, reading progress, and reviews in one place."
-            : "Reviews from Tastebase readers."}
+            : "My notes on books I've read."}
         </p>
       </div>
       <button
