@@ -57,7 +57,10 @@ function RatingDisplay({ rating }: Readonly<{ rating: number }>) {
   );
 }
 
-function SavedReview({ book }: Readonly<{ book: BookRecommendation }>) {
+function SavedReview({
+  book,
+  showVisibility,
+}: Readonly<{ book: BookRecommendation; showVisibility: boolean }>) {
   if (book.rating == null || !book.writeup) return null;
   return (
     <div className="book-saved-review">
@@ -66,7 +69,9 @@ function SavedReview({ book }: Readonly<{ book: BookRecommendation }>) {
         <RatingDisplay rating={book.rating} />
       </div>
       <p>{book.writeup}</p>
-      {book.isPublic && <span className="book-public-badge">Public</span>}
+      {showVisibility && book.isPublic && (
+        <span className="book-public-badge">Public</span>
+      )}
     </div>
   );
 }
@@ -159,7 +164,7 @@ function ReviewEditor({
             onChange={handleWriteup}
             rows={4}
             maxLength={6000}
-            placeholder="A brief writeup Claude can learn from next time..."
+            placeholder="What stood out? What worked—or didn’t?"
             required
           />
         </label>
@@ -222,7 +227,7 @@ function OwnerControls({
       </label>
       {!hasFeedback && (
         <p className="book-visibility-note">
-          Rate the book and add a writeup before publishing.
+          Add a rating and review before sharing.
         </p>
       )}
     </div>
@@ -249,7 +254,7 @@ export function BookCard({
   return (
     <article className="book-card">
       <BookCopy book={book} />
-      <SavedReview book={book} />
+      <SavedReview book={book} showVisibility={editable} />
       {editable && (
         <>
           <OwnerControls

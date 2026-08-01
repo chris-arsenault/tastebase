@@ -35,6 +35,8 @@ const themeClass: Record<string, string> = {
   all: "theme-sauce",
 };
 
+const copyrightYear = new Date().getUTCFullYear();
+
 function ContentArea({
   tastings,
   filteredTastings,
@@ -216,7 +218,7 @@ function RecipesSection({
 function AppFooter() {
   return (
     <footer className="app-footer">
-      <span>Copyright &copy; 2025</span>
+      <span>&copy; {copyrightYear} Tastebase</span>
       <a href="https://ahara.io" target="_blank" rel="noreferrer">
         <img src="/tsonu-combined.png" alt="tsonu" height="14" />
       </a>

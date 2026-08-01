@@ -13,7 +13,7 @@ export default defineConfig({
         name: "Tastebase",
         short_name: "Tastebase",
         description:
-          "Track tastings with photo and voice capture, scoring, and tasting notes.",
+          "Keep tasting notes, recipes, and book reviews in one place.",
         theme_color: "#d63831",
         background_color: "#1a1a2e",
         display: "standalone",

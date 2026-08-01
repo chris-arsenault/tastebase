@@ -18,13 +18,11 @@ function BooksIntro({ booksHook }: Readonly<{ booksHook: BooksHook }>) {
   return (
     <div className="books-intro">
       <div>
-        <h1>
-          {booksHook.isOwnerView ? "My reading list" : "Public bookshelf"}
-        </h1>
+        <h1>{booksHook.isOwnerView ? "My books" : "Book reviews"}</h1>
         <p>
           {booksHook.isOwnerView
-            ? "Claude saves recommendations here privately. Your ratings and writeups shape the next round."
-            : "Books appear here only after they have been rated, written up, and deliberately shared."}
+            ? "Recommendations, reading progress, and reviews in one place."
+            : "Reviews from Tastebase readers."}
         </p>
       </div>
       <button
@@ -80,8 +78,8 @@ export function BooksSection({
           <span className="empty-icon">📚</span>
           <p>
             {booksHook.isOwnerView
-              ? "No recommendations here yet. Ask Claude for your next books."
-              : "No book reviews have been shared yet."}
+              ? "No books yet. Ask Claude for a recommendation to get started."
+              : "No book reviews yet."}
           </p>
         </div>
       )}

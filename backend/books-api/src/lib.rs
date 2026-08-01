@@ -186,7 +186,7 @@ async fn update_visibility(
 
             if input.is_public && (current.rating.is_none() || current.writeup.trim().is_empty()) {
                 return Err(AppError::BadRequest(
-                    "a rating and writeup are required before publishing".into(),
+                    "Add a rating and review before sharing this book".into(),
                 ));
             }
 

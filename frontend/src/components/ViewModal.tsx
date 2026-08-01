@@ -186,7 +186,7 @@ function SourceImages({ record }: Readonly<{ record: TastingRecord }>) {
   if (!record.ingredientsImageUrl && !record.nutritionImageUrl) return null;
   return (
     <details className="view-source-images">
-      <summary>View Source Images</summary>
+      <summary>Label photos</summary>
       <div className="view-media-grid">
         {record.ingredientsImageUrl && (
           <div className="view-media-slot">
