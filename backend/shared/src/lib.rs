@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod books;
 pub mod cors;
 pub mod db;
 pub mod error;

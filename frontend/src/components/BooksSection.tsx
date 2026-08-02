@@ -1,10 +1,16 @@
-import { useMemo, useState, type ChangeEvent } from "react";
 import type { useBooks } from "../hooks/useBooks";
-import type { BookStatus } from "../types";
+import {
+  bookTagToken,
+  useBookDiscovery,
+  type BookFilter,
+  type BookSort,
+  type SortDirection,
+} from "../hooks/useBookDiscovery";
+import type { BookTag } from "../types";
 import { BookCard } from "./BookCard";
 
 type BooksHook = ReturnType<typeof useBooks>;
-type BookFilter = "all" | BookStatus;
+type BookDiscovery = ReturnType<typeof useBookDiscovery>;
 
 const filterLabels: Record<BookFilter, string> = {
   all: "All books",
@@ -12,6 +18,13 @@ const filterLabels: Record<BookFilter, string> = {
   reading: "Reading",
   read: "Read",
   did_not_finish: "Did not finish",
+};
+
+const sortLabels: Record<BookSort, string> = {
+  recommendedAt: "Recommendation date",
+  title: "Name",
+  author: "Author",
+  pageCount: "Page count",
 };
 
 function BooksIntro({ booksHook }: Readonly<{ booksHook: BooksHook }>) {
@@ -36,56 +49,165 @@ function BooksIntro({ booksHook }: Readonly<{ booksHook: BooksHook }>) {
   );
 }
 
-export function BooksSection({
-  booksHook,
-}: Readonly<{ booksHook: BooksHook }>) {
-  const [filter, setFilter] = useState<BookFilter>("all");
-  const visibleBooks = useMemo(
-    () =>
-      !booksHook.isOwnerView || filter === "all"
-        ? booksHook.books
-        : booksHook.books.filter((book) => book.status === filter),
-    [booksHook.books, booksHook.isOwnerView, filter],
-  );
-  const handleFilter = (event: ChangeEvent<HTMLSelectElement>) => {
-    setFilter(event.currentTarget.value as BookFilter);
-  };
+function TagFilters({
+  tags,
+  selected,
+  onToggle,
+  onClear,
+}: Readonly<{
+  tags: BookTag[];
+  selected: Set<string>;
+  onToggle: (tag: BookTag) => void;
+  onClear: () => void;
+}>) {
+  if (tags.length === 0) return null;
 
   return (
-    <main className="content books-section">
-      <BooksIntro booksHook={booksHook} />
-      {booksHook.isOwnerView && (
-        <div className="books-filter">
+    <fieldset className="books-tag-filter">
+      <legend>Filter by tags</legend>
+      <div className="books-tag-options">
+        {tags.map((tag) => {
+          const token = bookTagToken(tag);
+          const isSelected = selected.has(token);
+          return (
+            <button
+              key={token}
+              type="button"
+              className={isSelected ? "selected" : ""}
+              aria-pressed={isSelected}
+              onClick={() => onToggle(tag)}
+            >
+              <span>{tag.key}</span>={tag.value}
+            </button>
+          );
+        })}
+        {selected.size > 0 && (
+          <button type="button" className="books-tag-clear" onClick={onClear}>
+            Clear tags
+          </button>
+        )}
+      </div>
+      <p>Values within one key match either; different keys must all match.</p>
+    </fieldset>
+  );
+}
+
+function SortDirectionButton({
+  direction,
+  onDirection,
+}: Readonly<{
+  direction: SortDirection;
+  onDirection: () => void;
+}>) {
+  const nextDirection = direction === "asc" ? "descending" : "ascending";
+  return (
+    <button
+      type="button"
+      className="books-sort-direction"
+      onClick={onDirection}
+      aria-label={`Sort ${nextDirection}`}
+    >
+      {direction === "asc" ? "Ascending ↑" : "Descending ↓"}
+    </button>
+  );
+}
+
+function BooksControls({
+  isOwnerView,
+  discovery,
+}: Readonly<{
+  isOwnerView: boolean;
+  discovery: BookDiscovery;
+}>) {
+  return (
+    <div className="books-controls">
+      <div className="books-filter">
+        <div className="books-filter-fields">
+          {isOwnerView && (
+            <label>
+              Show
+              <select
+                value={discovery.statusFilter}
+                onChange={discovery.handleStatusFilter}
+              >
+                {Object.entries(filterLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
-            Show
-            <select value={filter} onChange={handleFilter}>
-              {Object.entries(filterLabels).map(([value, label]) => (
+            Sort by
+            <select value={discovery.sort} onChange={discovery.handleSort}>
+              {Object.entries(sortLabels).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
             </select>
           </label>
-          <span>
-            {visibleBooks.length} book{visibleBooks.length === 1 ? "" : "s"}
-          </span>
+          <SortDirectionButton
+            direction={discovery.direction}
+            onDirection={discovery.toggleDirection}
+          />
         </div>
+        <span>
+          {discovery.visibleBooks.length} book
+          {discovery.visibleBooks.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <TagFilters
+        tags={discovery.availableTags}
+        selected={discovery.selectedTags}
+        onToggle={discovery.toggleTag}
+        onClear={discovery.clearTags}
+      />
+    </div>
+  );
+}
+
+function emptyBookMessage(
+  isOwnerView: boolean,
+  hasActiveFilters: boolean,
+): string {
+  if (hasActiveFilters) return "No books match these filters.";
+  if (isOwnerView) {
+    return "No books yet. Ask Claude for a recommendation to get started.";
+  }
+  return "No book reviews yet.";
+}
+
+export function BooksSection({
+  booksHook,
+}: Readonly<{ booksHook: BooksHook }>) {
+  const discovery = useBookDiscovery(booksHook.books, booksHook.isOwnerView);
+  const emptyMessage = emptyBookMessage(
+    booksHook.isOwnerView,
+    discovery.hasActiveFilters,
+  );
+
+  return (
+    <main className="content books-section">
+      <BooksIntro booksHook={booksHook} />
+      {!booksHook.loading && booksHook.books.length > 0 && (
+        <BooksControls
+          isOwnerView={booksHook.isOwnerView}
+          discovery={discovery}
+        />
       )}
       {booksHook.error && <div className="error-banner">{booksHook.error}</div>}
       {booksHook.loading && <div className="loading">Loading books...</div>}
-      {!booksHook.loading && visibleBooks.length === 0 && (
+      {!booksHook.loading && discovery.visibleBooks.length === 0 && (
         <div className="empty-state">
           <span className="empty-icon">📚</span>
-          <p>
-            {booksHook.isOwnerView
-              ? "No books yet. Ask Claude for a recommendation to get started."
-              : "No book reviews yet."}
-          </p>
+          <p>{emptyMessage}</p>
         </div>
       )}
-      {!booksHook.loading && visibleBooks.length > 0 && (
+      {!booksHook.loading && discovery.visibleBooks.length > 0 && (
         <div className="book-grid">
-          {visibleBooks.map((book) => (
+          {discovery.visibleBooks.map((book) => (
             <BookCard
               key={book.id}
               book={book}

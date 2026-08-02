@@ -334,6 +334,13 @@ pub enum BookStatus {
     DidNotFinish,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookTag {
+    pub key: String,
+    pub value: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct BookRecommendation {
@@ -342,6 +349,9 @@ pub struct BookRecommendation {
     pub author: String,
     pub summary: String,
     pub why_recommended: String,
+    pub page_count: Option<i32>,
+    pub purchase_link: Option<String>,
+    pub tags: sqlx::types::Json<Vec<BookTag>>,
     pub status: BookStatus,
     pub rating: Option<i16>,
     pub writeup: String,
@@ -367,7 +377,8 @@ pub struct UserContext {
 
 #[cfg(test)]
 mod tests {
-    use super::{BookRecommendation, BookStatus};
+    use super::{BookRecommendation, BookStatus, BookTag};
+    use sqlx::types::Json;
     use time::OffsetDateTime;
     use uuid::Uuid;
 
@@ -379,6 +390,12 @@ mod tests {
             author: "An Author".into(),
             summary: "Summary".into(),
             why_recommended: "Reason".into(),
+            page_count: Some(320),
+            purchase_link: Some("https://www.amazon.com/dp/example".into()),
+            tags: Json(vec![BookTag {
+                key: "category".into(),
+                value: "music".into(),
+            }]),
             status: BookStatus::Read,
             rating: Some(5),
             writeup: "Excellent".into(),
@@ -392,6 +409,9 @@ mod tests {
         let json = serde_json::to_value(book).expect("book should serialize");
         assert!(json.get("userId").is_none());
         assert_eq!(json["whyRecommended"], "Reason");
+        assert_eq!(json["pageCount"], 320);
+        assert_eq!(json["tags"][0]["key"], "category");
+        assert_eq!(json["purchaseLink"], "https://www.amazon.com/dp/example");
         assert_eq!(json["status"], "read");
         assert_eq!(json["isPublic"], true);
     }

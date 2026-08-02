@@ -34,7 +34,7 @@ The `processing` crate has internal modules:
 Vite + React SPA with three sections:
 - **Tastings** — product tasting tracker with photo/voice capture and AI enrichment (ported from scorchbook)
 - **Recipes** — recipe browser for Claude-saved recipes (RecipeList grid + RecipeDetail modal)
-- **Books** — private Claude recommendations with reading state, 1–5 ratings, writeups, and opt-in public reviews
+- **Books** — private Claude recommendations with page counts, key/value tags, purchase links, reading state, 1–5 ratings, writeups, and opt-in public reviews
 
 Section toggle in the header switches between them. Product type toggle (sauce/drink/all) only shows in tastings section.
 
@@ -59,7 +59,7 @@ runtime query strings (not compile-time checked).
 Schema: `users` + `cognito_users` (shared identity), `tastings` (tasting records),
 `recipes` + `recipe_ingredients` + `recipe_steps` + `collections` (recipe system),
 `recipe_reviews` + `recipe_images` (recipe media and reviews), and
-`book_recommendations` (single-owner private reading state and explicitly public reviews).
+`book_recommendations` + `book_tags` (single-owner private reading state, reusable key/value metadata, and explicitly public reviews).
 
 ## Platform Integration
 
@@ -70,6 +70,7 @@ Follows `~/src/ahara/INTEGRATION.md`. Registered in ahara-control and ahara-serv
 - ALB routes by path prefix to separate Lambdas (no API Gateway)
 - ALB jwt-validation for tastings/recipes write routes and all private book routes; MCP uses app-level auth for WWW-Authenticate header
 - Tastebase has one authenticated owner; anonymous visitors can read tastings, recipes, and explicitly published book reviews
+- Book tags are normalized key/value pairs; MCP reads the existing corpus before classifying recommendations so keys remain stable and values remain reusable
 - Processing Lambda is invoked asynchronously for media enrichment (tastings + recipe reviews)
 - S3 for media blobs (presigned upload URLs), PostgreSQL for structured data
 - OG Lambda generates HTML with per-recipe OpenGraph tags; CloudFront caches at edge

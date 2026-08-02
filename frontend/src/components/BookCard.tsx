@@ -32,12 +32,41 @@ function BookCopy({ book }: Readonly<{ book: BookRecommendation }>) {
           {statusLabels[book.status]}
         </span>
       </div>
+      <BookMetadata book={book} />
       <p className="book-summary">{book.summary}</p>
       <div className="book-reason">
         <h3>Why Claude recommended it</h3>
         <p>{book.whyRecommended}</p>
       </div>
     </>
+  );
+}
+
+function BookMetadata({ book }: Readonly<{ book: BookRecommendation }>) {
+  if (book.pageCount == null && !book.purchaseLink && book.tags.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="book-metadata">
+      <div className="book-metadata-links">
+        {book.pageCount != null && <span>{book.pageCount} pages</span>}
+        {book.purchaseLink && (
+          <a href={book.purchaseLink} target="_blank" rel="noreferrer">
+            Purchase book
+          </a>
+        )}
+      </div>
+      {book.tags.length > 0 && (
+        <ul className="book-tags" aria-label="Book tags">
+          {book.tags.map((tag) => (
+            <li key={`${tag.key}=${tag.value}`}>
+              <span>{tag.key}</span>={tag.value}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

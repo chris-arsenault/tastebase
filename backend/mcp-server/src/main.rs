@@ -253,6 +253,8 @@ fn handle_tools_list(msg: McpMessage) -> Result<JsonRpcResponse, JsonRpcResponse
         update_recipe_tool_def(),
         books::list_book_recommendations_tool_def(),
         books::save_book_recommendations_tool_def(),
+        books::patch_book_recommendation_tool_def(),
+        books::get_book_tag_corpus_tool_def(),
     ];
     tracing::info!(tool_count = tools.len(), "tools/list");
     Ok(jsonrpc_result(
@@ -635,6 +637,14 @@ async fn handle_tools_call(
                 .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing arguments"))?;
             Ok(books::dispatch_save_book_recommendations(msg.id, state, user, arguments).await)
         }
+        "patch_book_recommendation" => {
+            let arguments = params
+                .get("arguments")
+                .cloned()
+                .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing arguments"))?;
+            Ok(books::dispatch_patch_book_recommendation(msg.id, state, user, arguments).await)
+        }
+        "get_book_tag_corpus" => Ok(books::dispatch_get_book_tag_corpus(msg.id, state, user).await),
         _ => Err(jsonrpc_error(
             msg.id,
             -32602,

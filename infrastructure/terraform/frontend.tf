@@ -36,8 +36,8 @@ module "frontend" {
     site_name = "Tastebase"
 
     defaults = {
-      title       = "Tastebase"
-      description = "Personal platform for tastings, recipes, and book recommendations."
+      title       = "Tastings, Recipes & Books"
+      description = "Keep tasting notes, recipes, and book reviews in one place."
       image       = "/tastebase-social.png"
     }
 

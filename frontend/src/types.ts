@@ -153,12 +153,20 @@ export type RecipeFull = Recipe & {
 // Book types
 export type BookStatus = "recommended" | "reading" | "read" | "did_not_finish";
 
+export type BookTag = {
+  key: string;
+  value: string;
+};
+
 export type BookRecommendation = {
   id: string;
   title: string;
   author: string;
   summary: string;
   whyRecommended: string;
+  pageCount: number | null;
+  purchaseLink: string | null;
+  tags: BookTag[];
   status: BookStatus;
   rating: number | null;
   writeup: string;
