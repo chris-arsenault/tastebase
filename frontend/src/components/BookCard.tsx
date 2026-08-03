@@ -6,6 +6,7 @@ import {
   type SubmitEvent,
 } from "react";
 import type { BookRecommendation, BookStatus } from "../types";
+import { bookTagColorClass, formatBookTagKey } from "../utils/bookTags";
 
 const statusLabels: Record<BookStatus, string> = {
   recommended: "Want to read",
@@ -60,8 +61,12 @@ function BookMetadata({ book }: Readonly<{ book: BookRecommendation }>) {
       {book.tags.length > 0 && (
         <ul className="book-tags" aria-label="Book tags">
           {book.tags.map((tag) => (
-            <li key={`${tag.key}=${tag.value}`}>
-              <span>{tag.key}</span>={tag.value}
+            <li
+              key={`${tag.key}=${tag.value}`}
+              className={bookTagColorClass(tag.key)}
+              aria-label={`${formatBookTagKey(tag.key)}: ${tag.value}`}
+            >
+              {tag.value}
             </li>
           ))}
         </ul>

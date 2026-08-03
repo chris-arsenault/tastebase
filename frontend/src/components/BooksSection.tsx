@@ -1,12 +1,13 @@
+import { useCallback, type ChangeEvent } from "react";
 import type { useBooks } from "../hooks/useBooks";
 import {
-  bookTagToken,
   useBookDiscovery,
   type BookFilter,
   type BookSort,
   type SortDirection,
+  type BookTagFacet,
 } from "../hooks/useBookDiscovery";
-import type { BookTag } from "../types";
+import { bookTagColorClass, formatBookTagKey } from "../utils/bookTags";
 import { BookCard } from "./BookCard";
 
 type BooksHook = ReturnType<typeof useBooks>;
@@ -50,45 +51,72 @@ function BooksIntro({ booksHook }: Readonly<{ booksHook: BooksHook }>) {
 }
 
 function TagFilters({
-  tags,
-  selected,
-  onToggle,
+  facets,
+  selectedValues,
+  onSelect,
   onClear,
 }: Readonly<{
-  tags: BookTag[];
-  selected: Set<string>;
-  onToggle: (tag: BookTag) => void;
+  facets: BookTagFacet[];
+  selectedValues: Record<string, string>;
+  onSelect: (key: string, value: string) => void;
   onClear: () => void;
 }>) {
-  if (tags.length === 0) return null;
+  if (facets.length === 0) return null;
+
+  const hasSelections = Object.keys(selectedValues).length > 0;
 
   return (
-    <fieldset className="books-tag-filter">
-      <legend>Filter by tags</legend>
-      <div className="books-tag-options">
-        {tags.map((tag) => {
-          const token = bookTagToken(tag);
-          const isSelected = selected.has(token);
-          return (
-            <button
-              key={token}
-              type="button"
-              className={isSelected ? "selected" : ""}
-              aria-pressed={isSelected}
-              onClick={() => onToggle(tag)}
-            >
-              <span>{tag.key}</span>={tag.value}
-            </button>
-          );
-        })}
-        {selected.size > 0 && (
-          <button type="button" className="books-tag-clear" onClick={onClear}>
-            Clear tags
+    <section className="books-tag-filter" aria-labelledby="books-tags-heading">
+      <div className="books-tag-filter-heading">
+        <h2 id="books-tags-heading">Filter by tags</h2>
+        {hasSelections && (
+          <button type="button" onClick={onClear}>
+            Clear tag filters
           </button>
         )}
       </div>
-      <p>Values within one key match either; different keys must all match.</p>
-    </fieldset>
+      <div className="books-tag-fields">
+        {facets.map((facet) => (
+          <TagFacetField
+            key={facet.key}
+            facet={facet}
+            value={selectedValues[facet.key] ?? ""}
+            onSelect={onSelect}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TagFacetField({
+  facet,
+  value,
+  onSelect,
+}: Readonly<{
+  facet: BookTagFacet;
+  value: string;
+  onSelect: (key: string, value: string) => void;
+}>) {
+  const handleChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      onSelect(facet.key, event.currentTarget.value);
+    },
+    [facet.key, onSelect],
+  );
+
+  return (
+    <label className={`books-tag-field ${bookTagColorClass(facet.key)}`}>
+      <span>{formatBookTagKey(facet.key)}</span>
+      <select value={value} onChange={handleChange}>
+        <option value="">Any</option>
+        {facet.values.map((tagValue) => (
+          <option key={tagValue} value={tagValue}>
+            {tagValue}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -159,9 +187,9 @@ function BooksControls({
         </span>
       </div>
       <TagFilters
-        tags={discovery.availableTags}
-        selected={discovery.selectedTags}
-        onToggle={discovery.toggleTag}
+        facets={discovery.availableTagFacets}
+        selectedValues={discovery.selectedTagValues}
+        onSelect={discovery.selectTagValue}
         onClear={discovery.clearTags}
       />
     </div>

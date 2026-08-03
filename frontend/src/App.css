@@ -3165,14 +3165,22 @@
 
 .books-tag-filter {
   margin: 0;
-  padding: 0.8rem;
+  padding: 0.9rem;
   border: 1px solid var(--border-burnt);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.6);
 }
 
-.books-tag-filter legend {
-  padding: 0 0.25rem;
+.books-tag-filter-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.books-tag-filter-heading h2 {
+  margin: 0;
   color: var(--smoke);
   font-size: 0.72rem;
   font-weight: 700;
@@ -3180,49 +3188,74 @@
   text-transform: uppercase;
 }
 
-.books-tag-filter p {
-  margin: 0.55rem 0 0;
-  color: var(--soot);
+.books-tag-filter-heading button {
+  min-height: auto;
+  padding: 0.3rem 0.5rem;
+  border: 1px dashed var(--border-burnt);
+  background: transparent;
+  color: var(--smoke);
   font-size: 0.7rem;
-}
-
-.books-tag-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.books-tag-options button,
-.book-tags li {
-  border: 1px solid var(--border-burnt);
-  border-radius: 999px;
-  background: var(--cream);
-  color: var(--soot);
-  font-size: 0.72rem;
-  font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
 }
 
-.books-tag-options button {
-  min-height: auto;
-  padding: 0.35rem 0.55rem;
+.books-tag-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
 }
 
-.books-tag-options button.selected {
-  border-color: var(--ember);
-  background: var(--ember);
-  color: white;
+.books-tag-field {
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--book-tag-color);
 }
 
-.books-tag-options button span,
-.book-tags li span {
-  font-weight: 700;
+.books-tag-field > span {
+  color: var(--book-tag-color);
 }
 
-.books-tag-options .books-tag-clear {
-  border-style: dashed;
-  background: transparent;
+.books-tag-field select {
+  border-color: var(--book-tag-color);
+}
+
+.book-tag-color-0 {
+  --book-tag-color: #8b3a2b;
+  --book-tag-background: #f5e3dc;
+}
+
+.book-tag-color-1 {
+  --book-tag-color: #346b48;
+  --book-tag-background: #dfeee4;
+}
+
+.book-tag-color-2 {
+  --book-tag-color: #315f83;
+  --book-tag-background: #dfeaf2;
+}
+
+.book-tag-color-3 {
+  --book-tag-color: #76528a;
+  --book-tag-background: #ece3f1;
+}
+
+.book-tag-color-4 {
+  --book-tag-color: #8a5a1f;
+  --book-tag-background: #f3e8d3;
+}
+
+.book-tag-color-5 {
+  --book-tag-color: #8a3e62;
+  --book-tag-background: #f2dfe8;
+}
+
+.book-tag-color-6 {
+  --book-tag-color: #376f70;
+  --book-tag-background: #dceced;
+}
+
+.book-tag-color-7 {
+  --book-tag-color: #615846;
+  --book-tag-background: #e9e5dc;
 }
 
 .book-grid {
@@ -3290,6 +3323,14 @@
 
 .book-tags li {
   padding: 0.25rem 0.5rem;
+  border: 1px solid var(--book-tag-color);
+  border-radius: 999px;
+  background: var(--book-tag-background);
+  color: var(--book-tag-color);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .book-status,

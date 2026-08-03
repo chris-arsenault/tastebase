@@ -1,16 +1,15 @@
 import { useCallback, useMemo, useState, type ChangeEvent } from "react";
-import type { BookRecommendation, BookStatus, BookTag } from "../types";
+import type { BookRecommendation, BookStatus } from "../types";
 
 export type BookFilter = "all" | BookStatus;
 export type BookSort = "recommendedAt" | "title" | "author" | "pageCount";
 export type SortDirection = "asc" | "desc";
+export type BookTagFacet = { key: string; values: string[] };
 
 const collator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base",
 });
-
-export const bookTagToken = (tag: BookTag) => `${tag.key}\u0000${tag.value}`;
 
 function comparePageCounts(
   left: number | null,
@@ -59,38 +58,32 @@ function compareBooks(
   return comparison || collator.compare(left.title, right.title);
 }
 
-function selectedTagsByKey(
-  selectedTags: Set<string>,
-): Map<string, Set<string>> {
-  const selectedByKey = new Map<string, Set<string>>();
-  for (const token of selectedTags) {
-    const [key, value] = token.split("\u0000");
-    const values = selectedByKey.get(key) ?? new Set<string>();
-    values.add(value);
-    selectedByKey.set(key, values);
-  }
-  return selectedByKey;
-}
-
 function matchesSelectedTags(
   book: BookRecommendation,
-  selectedByKey: Map<string, Set<string>>,
+  selectedTagValues: Record<string, string>,
 ): boolean {
-  return [...selectedByKey].every(([key, values]) =>
-    book.tags.some((tag) => tag.key === key && values.has(tag.value)),
+  return Object.entries(selectedTagValues).every(([key, value]) =>
+    book.tags.some((tag) => tag.key === key && tag.value === value),
   );
 }
 
-function collectAvailableTags(books: BookRecommendation[]): BookTag[] {
-  const tags = new Map<string, BookTag>();
+function collectAvailableTagFacets(
+  books: BookRecommendation[],
+): BookTagFacet[] {
+  const valuesByKey = new Map<string, Set<string>>();
   for (const book of books) {
-    for (const tag of book.tags) tags.set(bookTagToken(tag), tag);
+    for (const tag of book.tags) {
+      const values = valuesByKey.get(tag.key) ?? new Set<string>();
+      values.add(tag.value);
+      valuesByKey.set(tag.key, values);
+    }
   }
-  return [...tags.values()].sort(
-    (left, right) =>
-      collator.compare(left.key, right.key) ||
-      collator.compare(left.value, right.value),
-  );
+  return [...valuesByKey]
+    .map(([key, values]) => ({
+      key,
+      values: [...values].sort(collator.compare),
+    }))
+    .sort((left, right) => collator.compare(left.key, right.key));
 }
 
 export function useBookDiscovery(
@@ -100,25 +93,25 @@ export function useBookDiscovery(
   const [statusFilter, setStatusFilter] = useState<BookFilter>("all");
   const [sort, setSort] = useState<BookSort>("recommendedAt");
   const [direction, setDirection] = useState<SortDirection>("desc");
-  const [selectedTagTokens, setSelectedTagTokens] = useState<string[]>([]);
-  const selectedTags = useMemo(
-    () => new Set(selectedTagTokens),
-    [selectedTagTokens],
+  const [selectedTagValues, setSelectedTagValues] = useState<
+    Record<string, string>
+  >({});
+  const availableTagFacets = useMemo(
+    () => collectAvailableTagFacets(books),
+    [books],
   );
-  const availableTags = useMemo(() => collectAvailableTags(books), [books]);
   const visibleBooks = useMemo(() => {
-    const selectedByKey = selectedTagsByKey(selectedTags);
     const filtered = books.filter(
       (book) =>
         (!isOwnerView ||
           statusFilter === "all" ||
           book.status === statusFilter) &&
-        matchesSelectedTags(book, selectedByKey),
+        matchesSelectedTags(book, selectedTagValues),
     );
     return filtered.sort((left, right) =>
       compareBooks(left, right, sort, direction),
     );
-  }, [books, direction, isOwnerView, selectedTags, sort, statusFilter]);
+  }, [books, direction, isOwnerView, selectedTagValues, sort, statusFilter]);
   const handleStatusFilter = useCallback(
     (event: ChangeEvent<HTMLSelectElement>) => {
       setStatusFilter(event.currentTarget.value as BookFilter);
@@ -133,29 +126,30 @@ export function useBookDiscovery(
   const toggleDirection = useCallback(() => {
     setDirection((current) => (current === "asc" ? "desc" : "asc"));
   }, []);
-  const toggleTag = useCallback((tag: BookTag) => {
-    const token = bookTagToken(tag);
-    setSelectedTagTokens((current) =>
-      current.includes(token)
-        ? current.filter((value) => value !== token)
-        : [...current, token],
-    );
+  const selectTagValue = useCallback((key: string, value: string) => {
+    setSelectedTagValues((current) => {
+      const next = { ...current };
+      if (value) next[key] = value;
+      else delete next[key];
+      return next;
+    });
   }, []);
-  const clearTags = useCallback(() => setSelectedTagTokens([]), []);
+  const clearTags = useCallback(() => setSelectedTagValues({}), []);
 
   return {
-    availableTags,
+    availableTagFacets,
     clearTags,
     direction,
     handleSort,
     handleStatusFilter,
     hasActiveFilters:
-      (isOwnerView && statusFilter !== "all") || selectedTags.size > 0,
-    selectedTags,
+      (isOwnerView && statusFilter !== "all") ||
+      Object.keys(selectedTagValues).length > 0,
+    selectedTagValues,
+    selectTagValue,
     sort,
     statusFilter,
     toggleDirection,
-    toggleTag,
     visibleBooks,
   };
 }
