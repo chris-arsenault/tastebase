@@ -61,7 +61,9 @@ function SignInForm({
         required
         autoComplete="current-password"
       />
-      <button type="submit">Sign in</button>
+      <button type="submit" className="btn-primary">
+        Sign in
+      </button>
     </form>
   );
 }
@@ -88,8 +90,10 @@ function MfaCodeForm({
         autoComplete="one-time-code"
         maxLength={6}
       />
-      <button type="submit">Verify</button>
-      <button type="button" className="menu-auth-secondary" onClick={onSignOut}>
+      <button type="submit" className="btn-primary">
+        Verify
+      </button>
+      <button type="button" className="btn-ghost" onClick={onSignOut}>
         Start over
       </button>
     </form>
@@ -112,7 +116,7 @@ function MfaSetupRedirectPanel({
       <a className="menu-auth-setup-link" href={redirect.enrollmentUrl}>
         Open Ahara Business
       </a>
-      <button type="button" className="menu-auth-secondary" onClick={onSignOut}>
+      <button type="button" className="btn-ghost" onClick={onSignOut}>
         Return to sign in
       </button>
     </div>
@@ -157,6 +161,12 @@ function AuthMenu({
   return <div className="menu-loading">Loading...</div>;
 }
 
+const sections: { id: AppSection; label: string }[] = [
+  { id: "tastings", label: "Tastings" },
+  { id: "recipes", label: "Recipes" },
+  { id: "books", label: "Bookshelf" },
+];
+
 function SectionToggle({
   section,
   onSectionChange,
@@ -165,28 +175,35 @@ function SectionToggle({
   onSectionChange: (section: AppSection) => void;
 }>) {
   return (
-    <div className="section-toggle">
-      <button
-        className={section === "tastings" ? "active" : ""}
-        onClick={() => onSectionChange("tastings")}
-      >
-        Tastings
-      </button>
-      <button
-        className={section === "recipes" ? "active" : ""}
-        onClick={() => onSectionChange("recipes")}
-      >
-        Recipes
-      </button>
-      <button
-        className={section === "books" ? "active" : ""}
-        onClick={() => onSectionChange("books")}
-      >
-        Bookshelf
-      </button>
+    <div
+      className="segmented segmented-accent"
+      role="group"
+      aria-label="Section"
+    >
+      {sections.map((entry) => (
+        <button
+          key={entry.id}
+          type="button"
+          className={section === entry.id ? "active" : ""}
+          aria-pressed={section === entry.id}
+          onClick={() => onSectionChange(entry.id)}
+        >
+          {entry.label}
+        </button>
+      ))}
     </div>
   );
 }
+
+const productTypes: {
+  id: ProductType | "all";
+  label: string;
+  title: string;
+}[] = [
+  { id: "sauce", label: "Sauces", title: "Hot sauces" },
+  { id: "all", label: "All", title: "All items" },
+  { id: "drink", label: "Drinks", title: "Drinks" },
+];
 
 function ProductToggle({
   productType,
@@ -196,28 +213,19 @@ function ProductToggle({
   setProductType: (pt: ProductType | "all") => void;
 }>) {
   return (
-    <div className="product-toggle">
-      <button
-        className={productType === "sauce" ? "active" : ""}
-        onClick={() => setProductType("sauce")}
-        title="Hot Sauces"
-      >
-        Sauces
-      </button>
-      <button
-        className={productType === "all" ? "active" : ""}
-        onClick={() => setProductType("all")}
-        title="All Items"
-      >
-        All
-      </button>
-      <button
-        className={productType === "drink" ? "active" : ""}
-        onClick={() => setProductType("drink")}
-        title="Drinks"
-      >
-        Drinks
-      </button>
+    <div className="segmented" role="group" aria-label="Product type">
+      {productTypes.map((entry) => (
+        <button
+          key={entry.id}
+          type="button"
+          className={productType === entry.id ? "active" : ""}
+          aria-pressed={productType === entry.id}
+          onClick={() => setProductType(entry.id)}
+          title={entry.title}
+        >
+          {entry.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -246,38 +254,41 @@ function HeaderActions({
   authActions: AuthActions;
   onError: (msg: string) => void;
 }>) {
+  const signedIn = auth.status === "signedIn";
   return (
     <div className="header-actions">
-      {auth.status === "signedIn" && section === "tastings" && (
+      {signedIn && (
         <button
-          className="refresh-btn"
+          className="refresh-btn btn-icon"
           onClick={refresh.onRefresh}
           disabled={refresh.refreshing}
           title="Refresh data"
           aria-label="Refresh data"
         >
-          {refresh.refreshing ? "..." : "\u21BB"}
+          {refresh.refreshing ? "..." : "↻"}
         </button>
       )}
 
-      {auth.status === "signedIn" && section === "tastings" && (
+      {signedIn && section === "tastings" && (
         <button
-          className="add-btn"
+          className="add-btn btn-icon"
           onClick={() => (formOpen ? onCloseForm() : onAdd())}
           title={formOpen ? "Close" : "Add tasting"}
+          aria-label={formOpen ? "Close form" : "Add tasting"}
         >
-          {formOpen ? "\u00d7" : "+"}
+          {formOpen ? "×" : "+"}
         </button>
       )}
 
       <div className="menu-container">
         <button
-          className="menu-btn"
+          className="menu-btn btn-icon"
           onClick={(e) => {
             e.stopPropagation();
             menu.setOpen(!menu.open);
           }}
           aria-label="Menu"
+          aria-expanded={menu.open}
         >
           <span className="menu-icon" />
         </button>

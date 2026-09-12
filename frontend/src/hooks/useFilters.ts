@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Fuse from "fuse.js";
 import type { Filters, TastingRecord } from "../types";
 
@@ -9,6 +9,11 @@ const getStoredProductType = () => {
   return "all";
 };
 
+export type TastingSort = Filters["sortBy"];
+
+export const defaultSortDirection = (sort: TastingSort): Filters["sortDir"] =>
+  sort === "name" || sort === "style" ? "asc" : "desc";
+
 const defaultFilters: Filters = {
   productType: getStoredProductType(),
   search: "",
@@ -18,6 +23,7 @@ const defaultFilters: Filters = {
   minHeat: "",
   date: "",
   sortBy: "date",
+  sortDir: "desc",
 };
 
 type FilterPredicate = (item: TastingRecord) => boolean;
@@ -69,24 +75,46 @@ const fuseSearch = (results: TastingRecord[], query: string) => {
   return fuse.search(query).map((r) => r.item);
 };
 
-type SortKey = Filters["sortBy"];
-
+/** Ascending comparators; direction is applied once, afterwards. */
 const comparators: Record<
-  SortKey,
+  TastingSort,
   (a: TastingRecord, b: TastingRecord) => number
 > = {
   name: (a, b) => a.name.localeCompare(b.name),
-  score: (a, b) => (b.score ?? -1) - (a.score ?? -1),
+  score: (a, b) => (a.score ?? -1) - (b.score ?? -1),
   style: (a, b) => a.style.localeCompare(b.style),
-  heat: (a, b) => (b.heatUser ?? -1) - (a.heatUser ?? -1),
-  date: (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  heat: (a, b) => (a.heatUser ?? -1) - (b.heatUser ?? -1),
+  date: (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
 };
 
 const applyFiltersAndSort = (tastings: TastingRecord[], filters: Filters) => {
   const predicates = buildFilterPredicates(filters);
   let results = tastings.filter((item) => matchesAllFilters(item, predicates));
   results = fuseSearch(results, filters.ingredient.trim());
-  return [...results].sort(comparators[filters.sortBy] ?? comparators.date);
+  const compare = comparators[filters.sortBy] ?? comparators.date;
+  const sign = filters.sortDir === "asc" ? 1 : -1;
+  return [...results].sort((a, b) => sign * compare(a, b));
+};
+
+export type ActiveTastingFilter = {
+  key: "minScore" | "minHeat" | "style" | "ingredient" | "date";
+  label: string;
+};
+
+const describeActiveFilters = (filters: Filters): ActiveTastingFilter[] => {
+  const active: ActiveTastingFilter[] = [];
+  if (filters.minScore) {
+    active.push({ key: "minScore", label: `Score ${filters.minScore}+` });
+  }
+  if (filters.minHeat) {
+    active.push({ key: "minHeat", label: `Heat ${filters.minHeat}+` });
+  }
+  if (filters.style) active.push({ key: "style", label: filters.style });
+  if (filters.ingredient) {
+    active.push({ key: "ingredient", label: `with ${filters.ingredient}` });
+  }
+  if (filters.date) active.push({ key: "date", label: filters.date });
+  return active;
 };
 
 export function useFilters(tastings: TastingRecord[]) {
@@ -100,21 +128,35 @@ export function useFilters(tastings: TastingRecord[]) {
     () => applyFiltersAndSort(tastings, filters),
     [filters, tastings],
   );
-  const activeFilterCount = [
-    filters.minScore,
-    filters.minHeat,
-    filters.style,
-    filters.ingredient,
-    filters.date,
-  ].filter(Boolean).length;
-  const resetFilters = () => setFilters(defaultFilters);
+  const activeFilters = useMemo(
+    () => describeActiveFilters(filters),
+    [filters],
+  );
+  const resetFilters = useCallback(
+    () =>
+      setFilters((current) => ({
+        ...defaultFilters,
+        productType: current.productType,
+        search: current.search,
+        sortBy: current.sortBy,
+        sortDir: current.sortDir,
+      })),
+    [],
+  );
+  const clearFilter = useCallback(
+    (key: ActiveTastingFilter["key"]) =>
+      setFilters((current) => ({ ...current, [key]: "" })),
+    [],
+  );
 
   return {
     filters,
     setFilters,
     filteredTastings,
-    activeFilterCount,
+    activeFilters,
+    activeFilterCount: activeFilters.length,
     resetFilters,
+    clearFilter,
     defaultFilters,
   };
 }

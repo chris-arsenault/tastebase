@@ -1,4 +1,5 @@
 import { HeatDisplay, ScoreDisplay } from "./display";
+import { StatusDot, type SignalState } from "./signals";
 import type { AuthState } from "../hooks/useAuth";
 import type { TastingRecord } from "../types";
 
@@ -10,7 +11,7 @@ const formatDate = (value: string) => {
 };
 
 const statusLabels: Record<string, string> = {
-  pending: "Queued",
+  pending: "Queued for AI enrichment",
   image_extracted: "Analyzing photo",
   image_enriched: "Finding product page",
   ingredients_extracted: "Reading ingredients",
@@ -20,18 +21,15 @@ const statusLabels: Record<string, string> = {
   voice_extracted: "Extracting scores",
   notes_formatted: "Formatting notes",
   complete: "Complete",
-  error: "Error",
+  error: "AI enrichment failed",
 };
 
-const formatStatus = (status?: string) => {
-  if (!status) return "";
-  return statusLabels[status] ?? status.replace(/_/g, " ");
-};
+const describeStatus = (status: string) =>
+  statusLabels[status] ?? status.replace(/_/g, " ");
 
 const resolveType = (item: TastingRecord) => item.productType ?? "sauce";
 const isDrink = (item: TastingRecord) => resolveType(item) === "drink";
-const typeEmoji = (item: TastingRecord) =>
-  isDrink(item) ? "\uD83E\uDD64" : "\uD83C\uDF36\uFE0F";
+const typeEmoji = (item: TastingRecord) => (isDrink(item) ? "🥤" : "🌶️");
 const hasMediaKeys = (item: TastingRecord) =>
   Boolean(item.imageKey || item.ingredientsImageKey || item.nutritionImageKey);
 
@@ -49,6 +47,7 @@ function CardImage({
       className="card-image"
       role="button"
       tabIndex={0}
+      aria-label={`View ${item.name || "tasting"}`}
       onClick={onView}
       onKeyDown={(e) => {
         if (e.key === "Enter") onView();
@@ -62,12 +61,33 @@ function CardImage({
       {productTypeFilter === "all" && (
         <span
           className={`card-badge ${isDrink(item) ? "badge-drink" : "badge-sauce"}`}
+          title={isDrink(item) ? "Drink" : "Hot sauce"}
         >
           {typeEmoji(item)}
         </span>
       )}
-      {item.needsAttention && <span className="card-attention">!</span>}
+      {item.needsAttention && (
+        <span
+          className="card-attention"
+          title={item.attentionReason || "Needs attention"}
+        >
+          !
+        </span>
+      )}
     </div>
+  );
+}
+
+function PipelineStatus({ item }: Readonly<{ item: TastingRecord }>) {
+  if (!item.status || item.status === "complete") return null;
+  const isError = item.status === "error";
+  const state: SignalState = isError ? "error" : "info";
+  return (
+    <StatusDot
+      state={state}
+      text={isError ? "Error" : undefined}
+      detail={describeStatus(item.status)}
+    />
   );
 }
 
@@ -76,13 +96,7 @@ function CardMeta({ item }: Readonly<{ item: TastingRecord }>) {
     <div className="card-meta">
       {item.style && <span className="card-tag">{item.style}</span>}
       {item.date && <span className="card-date">{formatDate(item.date)}</span>}
-      {item.status && item.status !== "complete" && (
-        <span
-          className={`card-status ${item.status === "error" ? "status-error" : ""}`}
-        >
-          {formatStatus(item.status)}
-        </span>
-      )}
+      <PipelineStatus item={item} />
     </div>
   );
 }
@@ -107,7 +121,7 @@ function CardFooter({
   return (
     <footer className="card-footer">
       <button className="card-view-btn" onClick={onView}>
-        View Details
+        Details
       </button>
       {auth.status === "signedIn" && (
         <div className="card-actions">
@@ -116,15 +130,22 @@ function CardFooter({
           </button>
           {hasMediaKeys(item) && (
             <button
+              className="btn-icon"
               onClick={onRerun}
               disabled={rerunId === item.id}
-              title="Rerun AI"
+              title="Rerun AI enrichment"
+              aria-label="Rerun AI enrichment"
             >
-              {rerunId === item.id ? "..." : "\u21BB"}
+              {rerunId === item.id ? "..." : "↻"}
             </button>
           )}
-          <button className="card-delete" onClick={onDelete} title="Delete">
-            {"\u00D7"}
+          <button
+            className="card-delete btn-icon"
+            onClick={onDelete}
+            title="Delete"
+            aria-label="Delete"
+          >
+            {"×"}
           </button>
         </div>
       )}

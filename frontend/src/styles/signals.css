@@ -1,0 +1,305 @@
+/* ===========================================
+   SIGNALS — tooltip, status dot, meta chips, legend, clamp
+   Information encoded as symbol + color, with the sentence on hover/tap.
+   =========================================== */
+
+/* Tooltip */
+.tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tip-bubble {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-2px);
+  z-index: var(--z-tooltip);
+  max-width: min(280px, 90vw);
+  width: max-content;
+  padding: 0.4rem 0.6rem;
+  background: var(--char);
+  color: var(--cream);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--elev-2);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    visibility 0s linear 0.15s;
+}
+
+.tip-bubble::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border: 5px solid transparent;
+  border-bottom-color: var(--char);
+}
+
+.tip-start .tip-bubble {
+  left: 0;
+  transform: translateX(0) translateY(-2px);
+}
+
+.tip-start .tip-bubble::before {
+  left: 12px;
+}
+
+.tip-end .tip-bubble {
+  left: auto;
+  right: 0;
+  transform: translateX(0) translateY(-2px);
+}
+
+.tip-end .tip-bubble::before {
+  left: auto;
+  right: 7px;
+}
+
+.tip-open .tip-bubble {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0.15s, 0.15s, 0s;
+}
+
+.tip-open .tip-bubble,
+.tip-open.tip-start .tip-bubble,
+.tip-open.tip-end .tip-bubble {
+  transform: translateX(var(--tip-x, -50%)) translateY(0);
+}
+
+.tip-open.tip-start .tip-bubble,
+.tip-open.tip-end .tip-bubble {
+  --tip-x: 0;
+}
+
+/* Status dot + optional short word */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 24px;
+  padding: 0 0.55rem 0 0.4rem;
+  border-radius: var(--radius-pill);
+  background: var(--signal-bg, var(--state-muted-bg));
+  color: var(--signal-fg, var(--state-muted-fg));
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.status-chip:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 2px;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--signal-mark, var(--state-muted-mark));
+  flex-shrink: 0;
+}
+
+.state-ok {
+  --signal-bg: var(--state-ok-bg);
+  --signal-fg: var(--state-ok-fg);
+  --signal-mark: var(--state-ok-mark);
+}
+
+.state-active {
+  --signal-bg: var(--state-active-bg);
+  --signal-fg: var(--state-active-fg);
+  --signal-mark: var(--state-active-mark);
+}
+
+.state-info {
+  --signal-bg: var(--state-info-bg);
+  --signal-fg: var(--state-info-fg);
+  --signal-mark: var(--state-info-mark);
+}
+
+.state-muted {
+  --signal-bg: var(--state-muted-bg);
+  --signal-fg: var(--state-muted-fg);
+  --signal-mark: var(--state-muted-mark);
+}
+
+.state-error {
+  --signal-bg: var(--state-error-bg);
+  --signal-fg: var(--state-error-fg);
+  --signal-mark: var(--state-error-mark);
+}
+
+/* Review mark: ✓ reviewed, ○ not yet */
+.review-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1;
+  cursor: default;
+}
+
+.review-mark-done {
+  background: var(--state-ok-bg);
+  color: var(--state-ok-fg);
+}
+
+.review-mark-pending {
+  color: var(--soot);
+  opacity: 0.6;
+}
+
+/* Meta chips: value first, key on hover */
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 26px;
+  padding: 0 0.55rem;
+  border-radius: var(--radius-sm);
+  background: var(--aged-paper);
+  color: var(--smoke);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.meta-chip-link {
+  cursor: pointer;
+  color: var(--ember-deep);
+  font-weight: 600;
+}
+
+.meta-chip-link:hover {
+  background: var(--worn);
+}
+
+.meta-chip-icon {
+  font-size: var(--text-xs);
+}
+
+.meta-chip-ext {
+  font-size: var(--text-label);
+  opacity: 0.8;
+}
+
+/* Legend */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.8rem;
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--soot);
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.legend-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1rem;
+  font-weight: 700;
+  color: var(--smoke);
+}
+
+.legend-bar {
+  display: inline-block;
+  width: 22px;
+  height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--jalapeño), var(--fresh-green));
+}
+
+.legend-score {
+  font-size: var(--text-label);
+  font-weight: 700;
+  color: var(--ember-deep);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Clamp with reveal */
+.clamp-block p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.clamp-2 {
+  -webkit-line-clamp: 2;
+}
+
+.clamp-3 {
+  -webkit-line-clamp: 3;
+}
+
+.clamp-4 {
+  -webkit-line-clamp: 4;
+}
+
+.clamp-toggle {
+  min-height: 0;
+  margin-top: 0.2rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ember-deep);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.clamp-toggle:hover {
+  background: none;
+  text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  .legend {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}

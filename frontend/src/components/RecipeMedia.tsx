@@ -8,6 +8,7 @@ import {
 } from "../api";
 import { useRecorder } from "../hooks/useRecorder";
 import { renderMarkdown } from "../utils/recipeText";
+import { StatusDot } from "./signals";
 import type { RecipeImage, RecipeReview } from "../types";
 
 const formatDate = (val: string) => {
@@ -58,8 +59,9 @@ export function RecipeImages({
             {token && (
               <button
                 type="button"
-                className="media-remove"
+                className="media-remove btn-icon"
                 onClick={() => handleDelete(img.id)}
+                aria-label="Delete photo"
               >
                 {"\u00D7"}
               </button>
@@ -126,10 +128,16 @@ function ReviewStatus({ review }: Readonly<{ review: RecipeReview }>) {
   if (review.status === "error") {
     return review.processingError ? (
       <div className="card-error">{review.processingError}</div>
-    ) : null;
+    ) : (
+      <StatusDot state="error" text="Error" detail="AI processing failed" />
+    );
   }
   return (
-    <span className="card-status">{review.status.replace(/_/g, " ")}</span>
+    <StatusDot
+      state="info"
+      text="Processing"
+      detail={`AI is working: ${review.status.replace(/_/g, " ")}`}
+    />
   );
 }
 
@@ -293,7 +301,9 @@ function PhotoUpload({
     [recipeId, token, onUploaded],
   );
 
-  if (uploading) return <span className="card-status">Uploading...</span>;
+  if (uploading) {
+    return <StatusDot state="info" text="Uploading" detail="Uploading photo" />;
+  }
   return (
     <>
       {error && <div className="error-banner">{error}</div>}
@@ -339,7 +349,7 @@ function VoiceReviewCapture({
       {recorder.audioBlob && (
         <button
           type="button"
-          className="btn-submit review-submit"
+          className="btn-primary review-submit"
           onClick={handleSubmit}
           disabled={submitting}
         >

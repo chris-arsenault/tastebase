@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import type { ShelfItem } from "../types";
-import { filterShelf, isReviewed, type ShelfFilters } from "./shelf";
+import {
+  collectTagFacets,
+  filterShelf,
+  isReviewed,
+  type ShelfFilters,
+} from "./shelf";
 import { BookCard } from "../components/BookCard";
 
 const common = {
@@ -99,15 +104,64 @@ describe("public bookshelf", () => {
         kind: "publication",
         status: "cancelled",
         reviewedOnly: true,
-        tags: { fit: "high", outlook: "humanist" },
+        tags: { fit: ["high"], outlook: ["humanist"] },
       }),
     ).toEqual([publication]);
     expect(
       filterShelf([book, publication], {
         ...all,
-        tags: { outlook: "rationalist" },
+        tags: { outlook: ["rationalist"] },
       }),
     ).toEqual([]);
+  });
+
+  it("ORs values within a key, ANDs across keys, and searches title/creator/summary", () => {
+    const other: ShelfItem = {
+      ...book,
+      id: "other",
+      title: "Other",
+      tags: [{ key: "outlook", value: "rationalist" }],
+    };
+    expect(
+      filterShelf([book, other, publication], {
+        ...all,
+        tags: { outlook: ["humanist", "rationalist"] },
+      }),
+    ).toEqual([book, other, publication]);
+    expect(
+      filterShelf([book, other, publication], {
+        ...all,
+        tags: { outlook: ["humanist", "rationalist"], fit: ["low"] },
+      }),
+    ).toEqual([]);
+    expect(
+      filterShelf([book, other, publication], { ...all, search: "publisher" }),
+    ).toEqual([publication]);
+  });
+});
+
+describe("bookshelf facets", () => {
+  it("counts facet values against the other active filters", () => {
+    const other: ShelfItem = {
+      ...book,
+      id: "other",
+      title: "Other",
+      tags: [{ key: "outlook", value: "rationalist" }],
+    };
+    const facets = collectTagFacets([book, other, publication], {
+      ...all,
+      kind: "book",
+      tags: { outlook: ["humanist"] },
+    });
+    const outlook = facets.find((facet) => facet.key === "outlook");
+    // Selecting a value in the same key must not shrink its sibling counts.
+    expect(outlook?.values).toEqual([
+      { value: "humanist", count: 1 },
+      { value: "rationalist", count: 1 },
+    ]);
+    const fit = facets.find((facet) => facet.key === "fit");
+    // The outlook filter and kind=book both apply to the fit facet.
+    expect(fit?.values).toEqual([{ value: "high", count: 1 }]);
   });
 });
 

@@ -20,7 +20,7 @@ export function DeleteModal({
           <h3>Delete tasting?</h3>
           <button
             type="button"
-            className="modal-close"
+            className="modal-close btn-icon"
             onClick={onClose}
             aria-label="Close"
           >

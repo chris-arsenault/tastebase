@@ -1,4 +1,5 @@
 import type { Recipe } from "../types";
+import { Tooltip } from "./Tooltip";
 
 const sourceLabels: Record<string, string> = {
   claude: "Recipe by Claude",
@@ -13,11 +14,24 @@ const formatDate = (value: string) => {
   return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 };
 
+function RecipeScore({ score }: Readonly<{ score: number | null }>) {
+  if (score == null) return null;
+  return (
+    <Tooltip label="Latest review score out of 10">
+      <span className="recipe-card-score tabular">
+        {score}
+        <span className="recipe-card-score-max">/10</span>
+      </span>
+    </Tooltip>
+  );
+}
+
 type RecipeListProps = {
   recipes: Recipe[];
   loading: boolean;
   error: string;
   onSelect: (recipe: Recipe) => void;
+  filtered: boolean;
 };
 
 export function RecipeList({
@@ -25,6 +39,7 @@ export function RecipeList({
   loading,
   error,
   onSelect,
+  filtered,
 }: Readonly<RecipeListProps>) {
   if (loading) {
     return <div className="loading">Loading recipes...</div>;
@@ -37,8 +52,8 @@ export function RecipeList({
   if (recipes.length === 0) {
     return (
       <div className="empty-state">
-        <span className="empty-icon">{"\uD83D\uDCD6"}</span>
-        <p>No recipes yet.</p>
+        <span className="empty-icon">{"📖"}</span>
+        <p>{filtered ? "No recipes match your search." : "No recipes yet."}</p>
       </div>
     );
   }
@@ -60,7 +75,7 @@ export function RecipeList({
                 loading="lazy"
               />
             ) : (
-              <div className="recipe-card-image-empty">{"\uD83D\uDCD6"}</div>
+              <div className="recipe-card-image-empty">{"📖"}</div>
             )}
           </div>
           <div className="recipe-card-content">
@@ -72,11 +87,7 @@ export function RecipeList({
               <p className="recipe-card-description">{recipe.description}</p>
             )}
             <div className="recipe-card-meta">
-              <span className="recipe-card-score">
-                {recipe.latestScore != null
-                  ? `${recipe.latestScore}/10`
-                  : "Unreviewed"}
-              </span>
+              <RecipeScore score={recipe.latestScore ?? null} />
               <span className="recipe-card-date">
                 {formatDate(recipe.createdAt)}
               </span>

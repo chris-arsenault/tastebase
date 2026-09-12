@@ -1,0 +1,340 @@
+/* ===========================================
+   FILTER BAR — shared by tastings, recipes, bookshelf
+   =========================================== */
+.filter-bar {
+  padding: 0.75rem 1rem 0.5rem;
+  background: var(--cream);
+  border-bottom: 1px solid var(--border-burnt);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.filter-bar-main {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.search-field {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.6rem;
+  font-size: var(--text-sm);
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.search-field input {
+  padding-left: 2rem;
+  font-size: var(--text-sm);
+}
+
+/* Sort: select + direction button read as one control */
+.sort-control {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.sort-select {
+  width: auto;
+  min-width: 5.5rem;
+  padding-right: 0.5rem;
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  cursor: pointer;
+}
+
+.sort-direction.btn-icon {
+  margin-left: -1px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--aged-paper);
+  font-size: var(--text-base);
+}
+
+.sort-direction.btn-icon:hover {
+  background: var(--worn);
+}
+
+.filter-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.75rem;
+  background: var(--aged-paper);
+  flex-shrink: 0;
+}
+
+.filter-toggle:hover {
+  background: var(--worn);
+}
+
+.filter-toggle.active,
+.filter-toggle.has-filters {
+  background: var(--char);
+  border-color: var(--char);
+  color: var(--cream);
+}
+
+.filter-toggle.active:hover,
+.filter-toggle.has-filters:hover {
+  background: var(--smoke);
+}
+
+.filter-icon {
+  font-size: var(--text-base);
+}
+
+.filter-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--ember-deep);
+  color: #fff;
+  font-size: var(--text-label);
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Panel */
+.filter-panel {
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--border-burnt);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  animation: fadeUp 0.2s ease;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+}
+
+.filter-field {
+  flex: 1;
+  min-width: 140px;
+}
+
+.filter-field span {
+  font-size: var(--text-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.filter-field input {
+  font-size: var(--text-sm);
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.filter-group-label {
+  font-size: var(--text-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--smoke);
+}
+
+/* Status line: count · active chips · legend */
+.filter-bar-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  min-height: 1.5rem;
+}
+
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.clear-filters {
+  min-height: 28px;
+  padding: 0 0.6rem;
+  font-size: var(--text-xs);
+  background: transparent;
+  color: var(--soot);
+}
+
+/* ===========================================
+   CHIPS — the one toggle control for values
+   =========================================== */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 30px;
+  padding: 0 0.7rem;
+  border: 1px solid var(--border-burnt);
+  border-radius: var(--radius-pill);
+  background: var(--cream);
+  color: var(--smoke);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--aged-paper);
+  border-color: var(--smoke);
+}
+
+.chip-selected,
+.chip-active {
+  background: var(--char);
+  border-color: var(--char);
+  color: var(--cream);
+  font-weight: 600;
+}
+
+.chip-selected:hover,
+.chip-active:hover {
+  background: var(--smoke);
+  border-color: var(--smoke);
+}
+
+.chip-count {
+  font-size: var(--text-label);
+  font-weight: 600;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip-empty {
+  opacity: 0.45;
+}
+
+.chip-empty:hover {
+  opacity: 0.8;
+}
+
+.chip-more {
+  border-style: dashed;
+  color: var(--soot);
+}
+
+.chip-remove {
+  font-size: var(--text-base);
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.chip-reviewed {
+  border-color: var(--state-ok-mark);
+  color: var(--state-ok-fg);
+}
+
+.chip-reviewed.chip-selected {
+  background: var(--state-ok-fg);
+  border-color: var(--state-ok-fg);
+  color: #fff;
+}
+
+/* Tag chips: colored by tag key, one axis only */
+.chip-tag {
+  border-color: var(--book-tag-color, var(--border-burnt));
+  background: var(--book-tag-background, var(--cream));
+  color: var(--book-tag-color, var(--smoke));
+}
+
+.chip-tag:hover {
+  background: var(--book-tag-background, var(--aged-paper));
+  filter: brightness(0.96);
+}
+
+.chip-tag.chip-selected {
+  background: var(--book-tag-color, var(--char));
+  border-color: var(--book-tag-color, var(--char));
+  color: #fff;
+}
+
+.chip-tag.chip-selected .chip-count {
+  opacity: 0.85;
+}
+
+/* Tag rows in the filter panel: key rail on the left, chips flow right */
+.tag-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tag-row {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 0.5rem;
+  align-items: start;
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--book-tag-color, var(--border-burnt));
+}
+
+.tag-row-key {
+  padding-top: 0.35rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--book-tag-color, var(--smoke));
+}
+
+@media (max-width: 560px) {
+  .filter-bar-main {
+    flex-wrap: wrap;
+  }
+
+  .search-field {
+    flex-basis: 100%;
+  }
+
+  .filter-toggle-text {
+    display: none;
+  }
+
+  .tag-row {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+
+  .tag-row-key {
+    padding-top: 0;
+  }
+}
+
+@media (min-width: 900px) {
+  .filter-bar {
+    margin: 0 -1rem;
+    padding: 0.75rem 2rem 0.5rem;
+  }
+}

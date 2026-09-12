@@ -1,13 +1,22 @@
 import "./App.css";
+import "./styles/filter-bar.css";
+import "./styles/signals.css";
+import "./styles/books.css";
 import { useCallback, useMemo } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { useTastings } from "./hooks/useTastings";
 import { useFilters } from "./hooks/useFilters";
 import { useRecipes } from "./hooks/useRecipes";
+import {
+  useRecipeDiscovery,
+  type RecipeSort,
+} from "./hooks/useRecipeDiscovery";
 import { useBooks } from "./hooks/useBooks";
 import { useAppRouter } from "./hooks/useAppRouter";
 import { Header } from "./components/Header";
 import { SearchBar } from "./components/SearchBar";
+import { FilterBar } from "./components/FilterBar";
+import { Legend } from "./components/signals";
 import { TastingCard } from "./components/TastingCard";
 import { TastingForm } from "./components/TastingForm";
 import { ViewModal } from "./components/ViewModal";
@@ -15,7 +24,7 @@ import { DeleteModal } from "./components/DeleteModal";
 import { RecipeList } from "./components/RecipeList";
 import { RecipeDetail } from "./components/RecipeDetail";
 import { BooksSection } from "./components/BooksSection";
-import type { Recipe } from "./types";
+import type { AppSection, Recipe } from "./types";
 
 const searchPlaceholders: Record<string, string> = {
   drink: "Search drinks...",
@@ -60,7 +69,7 @@ function ContentArea({
         : `No ${itemLabel}s match your filters.`;
     return (
       <div className="empty-state">
-        <span className="empty-icon">{"\uD83C\uDF36\uFE0F"}</span>
+        <span className="empty-icon">{"🌶️"}</span>
         <p>{message}</p>
       </div>
     );
@@ -123,21 +132,14 @@ function TastingFormWrapper({
 
 function TastingsSection({
   tastings,
-  filters,
-  setFilters,
-  filteredTastings,
-  activeFilterCount,
-  resetFilters,
+  filtering,
   auth,
 }: Readonly<{
   tastings: ReturnType<typeof useTastings>;
-  filters: ReturnType<typeof useFilters>["filters"];
-  setFilters: ReturnType<typeof useFilters>["setFilters"];
-  filteredTastings: ReturnType<typeof useFilters>["filteredTastings"];
-  activeFilterCount: number;
-  resetFilters: () => void;
+  filtering: ReturnType<typeof useFilters>;
   auth: ReturnType<typeof useAuth>["auth"];
 }>) {
+  const { filters, setFilters, filteredTastings } = filtering;
   const searchPlaceholder =
     searchPlaceholders[filters.productType] ?? "Search...";
   const itemLabel = itemLabels[filters.productType] ?? "item";
@@ -147,9 +149,12 @@ function TastingsSection({
       <SearchBar
         filters={filters}
         setFilters={setFilters}
-        activeFilterCount={activeFilterCount}
+        activeFilters={filtering.activeFilters}
+        resultCount={filteredTastings.length}
+        itemLabel={itemLabel}
         searchPlaceholder={searchPlaceholder}
-        onReset={resetFilters}
+        onReset={filtering.resetFilters}
+        onClearFilter={filtering.clearFilter}
       />
       {tastings.errorMessage && (
         <div className="error-banner">{tastings.errorMessage}</div>
@@ -164,12 +169,6 @@ function TastingsSection({
         />
       )}
       <main className="content">
-        <div className="content-header">
-          <span className="content-count">
-            {filteredTastings.length}{" "}
-            {filteredTastings.length === 1 ? itemLabel : `${itemLabel}s`}
-          </span>
-        </div>
         <ContentArea
           tastings={tastings}
           filteredTastings={filteredTastings}
@@ -190,6 +189,20 @@ function TastingsSection({
   );
 }
 
+const recipeSortOptions: { value: RecipeSort; label: string }[] = [
+  { value: "createdAt", label: "Date" },
+  { value: "title", label: "Name" },
+  { value: "score", label: "Score" },
+];
+
+const recipeLegend = [
+  { glyph: <span className="legend-score">8/10</span>, label: "latest score" },
+  { glyph: "↗", label: "linked recipe" },
+];
+
+const noActiveFilters: never[] = [];
+const noop = () => {};
+
 function RecipesSection({
   recipesHook,
   onSelect,
@@ -197,21 +210,55 @@ function RecipesSection({
   recipesHook: ReturnType<typeof useRecipes>;
   onSelect: (recipe: Recipe) => void;
 }>) {
+  const discovery = useRecipeDiscovery(recipesHook.recipes);
+  const search = useMemo(
+    () => ({
+      value: discovery.search,
+      placeholder: "Search recipes...",
+      onChange: discovery.setSearch,
+    }),
+    [discovery.search, discovery.setSearch],
+  );
+  const sort = useMemo(
+    () => ({
+      options: recipeSortOptions,
+      value: discovery.sort,
+      direction: discovery.direction,
+      onChange: discovery.setSort,
+      onToggleDirection: discovery.toggleDirection,
+    }),
+    [
+      discovery.direction,
+      discovery.setSort,
+      discovery.sort,
+      discovery.toggleDirection,
+    ],
+  );
+  const resultCount = useMemo(
+    () => ({ count: discovery.visibleRecipes.length, noun: "recipe" }),
+    [discovery.visibleRecipes.length],
+  );
+  const legend = useMemo(() => <Legend items={recipeLegend} />, []);
   return (
-    <main className="content">
-      <div className="content-header">
-        <span className="content-count">
-          {recipesHook.recipes.length} recipe
-          {recipesHook.recipes.length !== 1 ? "s" : ""}
-        </span>
-      </div>
-      <RecipeList
-        recipes={recipesHook.recipes}
-        loading={recipesHook.loading}
-        error={recipesHook.error}
-        onSelect={onSelect}
+    <>
+      <FilterBar
+        search={search}
+        sort={sort}
+        resultCount={resultCount}
+        activeFilters={noActiveFilters}
+        onClearAll={noop}
+        legend={legend}
       />
-    </main>
+      <main className="content">
+        <RecipeList
+          recipes={discovery.visibleRecipes}
+          loading={recipesHook.loading}
+          error={recipesHook.error}
+          onSelect={onSelect}
+          filtered={discovery.search.trim().length > 0}
+        />
+      </main>
+    </>
   );
 }
 
@@ -226,14 +273,29 @@ function AppFooter() {
   );
 }
 
-function useDataRefresh(tastings: ReturnType<typeof useTastings>) {
-  return useMemo(
-    () => ({
-      refreshing: tastings.refreshing,
-      onRefresh: tastings.refresh,
-    }),
-    [tastings.refreshing, tastings.refresh],
-  );
+function useDataRefresh(
+  section: AppSection,
+  tastings: ReturnType<typeof useTastings>,
+  recipesHook: ReturnType<typeof useRecipes>,
+  booksHook: ReturnType<typeof useBooks>,
+) {
+  return useMemo(() => {
+    if (section === "recipes") {
+      return { refreshing: recipesHook.loading, onRefresh: recipesHook.reload };
+    }
+    if (section === "books") {
+      return { refreshing: booksHook.loading, onRefresh: booksHook.reload };
+    }
+    return { refreshing: tastings.refreshing, onRefresh: tastings.refresh };
+  }, [
+    section,
+    tastings.refreshing,
+    tastings.refresh,
+    recipesHook.loading,
+    recipesHook.reload,
+    booksHook.loading,
+    booksHook.reload,
+  ]);
 }
 
 function useMenuState(authHook: ReturnType<typeof useAuth>) {
@@ -256,13 +318,7 @@ function useRecipeDeletion(
 const App = () => {
   const authHook = useAuth();
   const tastings = useTastings(authHook.auth);
-  const {
-    filters,
-    setFilters,
-    filteredTastings,
-    activeFilterCount,
-    resetFilters,
-  } = useFilters(tastings.tastings);
+  const filtering = useFilters(tastings.tastings);
   const recipesHook = useRecipes();
   const booksHook = useBooks(authHook.auth);
   const {
@@ -274,18 +330,20 @@ const App = () => {
     handleBackToRecipes,
   } = useAppRouter(recipesHook.recipes);
   const menu = useMenuState(authHook);
-  const dataRefresh = useDataRefresh(tastings);
+  const dataRefresh = useDataRefresh(section, tastings, recipesHook, booksHook);
   const handleRecipeDeleted = useRecipeDeletion(
     recipesHook,
     handleBackToRecipes,
   );
 
   return (
-    <div className={`app ${themeClass[filters.productType] ?? "theme-sauce"}`}>
+    <div
+      className={`app ${themeClass[filtering.filters.productType] ?? "theme-sauce"}`}
+    >
       <Header
         auth={authHook.auth}
-        filters={filters}
-        setFilters={setFilters}
+        filters={filtering.filters}
+        setFilters={filtering.setFilters}
         section={section}
         onSectionChange={setSection}
         formOpen={tastings.formOpen}
@@ -299,11 +357,7 @@ const App = () => {
       {section === "tastings" && (
         <TastingsSection
           tastings={tastings}
-          filters={filters}
-          setFilters={setFilters}
-          filteredTastings={filteredTastings}
-          activeFilterCount={activeFilterCount}
-          resetFilters={resetFilters}
+          filtering={filtering}
           auth={authHook.auth}
         />
       )}

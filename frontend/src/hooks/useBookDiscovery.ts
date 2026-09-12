@@ -1,12 +1,108 @@
-import { useCallback, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useMemo } from "react";
 import type { ShelfItem, ShelfStatus } from "../types";
-import { creator, filterShelf } from "../utils/shelf";
+import {
+  collectTagFacets,
+  creator,
+  filterShelf,
+  type ShelfFilters,
+  type TagSelection,
+} from "../utils/shelf";
+import { useQueryState } from "./useQueryState";
 
 export type BookFilter = "all" | ShelfStatus;
 export type KindFilter = "all" | ShelfItem["kind"];
 export type BookSort = "recommendedAt" | "title" | "author" | "pageCount";
 export type SortDirection = "asc" | "desc";
-export type BookTagFacet = { key: string; values: string[] };
+
+export type DiscoveryState = {
+  search: string;
+  status: BookFilter;
+  kind: KindFilter;
+  reviewedOnly: boolean;
+  tags: TagSelection;
+  sort: BookSort;
+  direction: SortDirection;
+};
+
+const shelfStatuses: ReadonlySet<string> = new Set([
+  "recommended",
+  "reading",
+  "read",
+  "did_not_finish",
+  "subscribed",
+  "cancelled",
+  "not_interested",
+]);
+const sorts: ReadonlySet<string> = new Set([
+  "recommendedAt",
+  "title",
+  "author",
+  "pageCount",
+]);
+
+export const defaultDirection = (sort: BookSort): SortDirection =>
+  sort === "recommendedAt" ? "desc" : "asc";
+
+function parseTags(params: URLSearchParams): TagSelection {
+  const tags: TagSelection = {};
+  for (const entry of params.getAll("tag")) {
+    const separator = entry.indexOf(":");
+    if (separator <= 0) continue;
+    const key = entry.slice(0, separator);
+    const value = entry.slice(separator + 1);
+    if (!value) continue;
+    tags[key] = [...(tags[key] ?? []), value];
+  }
+  return tags;
+}
+
+function parseSort(params: URLSearchParams) {
+  const sort = params.get("sort") ?? "recommendedAt";
+  const resolved = (sorts.has(sort) ? sort : "recommendedAt") as BookSort;
+  const direction = params.get("dir");
+  return {
+    sort: resolved,
+    direction:
+      direction === "asc" || direction === "desc"
+        ? direction
+        : defaultDirection(resolved),
+  };
+}
+
+function parseKind(params: URLSearchParams): KindFilter {
+  const kind = params.get("kind");
+  return kind === "book" || kind === "publication" ? kind : "all";
+}
+
+function parseStatus(params: URLSearchParams): BookFilter {
+  const status = params.get("status") ?? "all";
+  return (shelfStatuses.has(status) ? status : "all") as BookFilter;
+}
+
+function parseState(params: URLSearchParams): DiscoveryState {
+  return {
+    search: params.get("q") ?? "",
+    status: parseStatus(params),
+    kind: parseKind(params),
+    reviewedOnly: params.get("reviewed") === "1",
+    tags: parseTags(params),
+    ...parseSort(params),
+  };
+}
+
+function serializeState(state: DiscoveryState, params: URLSearchParams) {
+  if (state.search) params.set("q", state.search);
+  if (state.status !== "all") params.set("status", state.status);
+  if (state.kind !== "all") params.set("kind", state.kind);
+  if (state.reviewedOnly) params.set("reviewed", "1");
+  for (const [key, values] of Object.entries(state.tags)) {
+    for (const value of values) params.append("tag", `${key}:${value}`);
+  }
+  if (state.sort !== "recommendedAt") params.set("sort", state.sort);
+  if (state.direction !== defaultDirection(state.sort)) {
+    params.set("dir", state.direction);
+  }
+}
 
 const collator = new Intl.Collator(undefined, {
   numeric: true,
@@ -18,10 +114,7 @@ function comparePageCounts(
   right: number | null,
   direction: SortDirection,
 ): number {
-  if (left == null) {
-    if (right == null) return 0;
-    return 1;
-  }
+  if (left == null) return right == null ? 0 : 1;
   if (right == null) return -1;
   return direction === "asc" ? left - right : right - left;
 }
@@ -30,15 +123,6 @@ function textSortValue(book: ShelfItem, sort: BookSort): string {
   if (sort === "title") return book.title;
   if (sort === "author") return creator(book);
   return book.recommendedAt;
-}
-
-function compareTextValues(
-  left: string,
-  right: string,
-  direction: SortDirection,
-): number {
-  const comparison = collator.compare(left, right);
-  return direction === "asc" ? comparison : -comparison;
 }
 
 function compareBooks(
@@ -55,131 +139,112 @@ function compareBooks(
       direction,
     );
   } else {
-    comparison = compareTextValues(
+    const raw = collator.compare(
       textSortValue(left, sort),
       textSortValue(right, sort),
-      direction,
     );
+    comparison = direction === "asc" ? raw : -raw;
   }
   return comparison || collator.compare(left.title, right.title);
 }
 
-function collectAvailableTagFacets(books: ShelfItem[]): BookTagFacet[] {
-  const valuesByKey = new Map<string, Set<string>>();
-  for (const book of books) {
-    for (const tag of book.tags) {
-      const values = valuesByKey.get(tag.key) ?? new Set<string>();
-      values.add(tag.value);
-      valuesByKey.set(tag.key, values);
-    }
-  }
-  return [...valuesByKey]
-    .map(([key, values]) => ({
-      key,
-      values: [...values].sort(collator.compare),
-    }))
-    .sort((left, right) => collator.compare(left.key, right.key));
+function toggleValue(values: string[], value: string): string[] {
+  return values.includes(value)
+    ? values.filter((entry) => entry !== value)
+    : [...values, value];
 }
 
-function useTagSelection(books: ShelfItem[]) {
-  const [selectedTagValues, setSelectedTagValues] = useState<
-    Record<string, string>
-  >({});
-  const availableTagFacets = useMemo(
-    () => collectAvailableTagFacets(books),
-    [books],
+type SetDiscoveryState = (
+  next: DiscoveryState | ((current: DiscoveryState) => DiscoveryState),
+) => void;
+
+function useDiscoveryActions(setState: SetDiscoveryState) {
+  const patch = useCallback(
+    (changes: Partial<DiscoveryState>) =>
+      setState((current) => ({ ...current, ...changes })),
+    [setState],
   );
-  const selectTagValue = useCallback((key: string, value: string) => {
-    setSelectedTagValues((current) => {
-      const next = { ...current };
-      if (value) next[key] = value;
-      else delete next[key];
-      return next;
-    });
-  }, []);
-  const clearTags = useCallback(() => setSelectedTagValues({}), []);
-  return { selectedTagValues, availableTagFacets, selectTagValue, clearTags };
-}
-
-function useShelfSort() {
-  const [sort, setSort] = useState<BookSort>("recommendedAt");
-  const [direction, setDirection] = useState<SortDirection>("desc");
-  const handleSort = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    const nextSort = event.currentTarget.value as BookSort;
-    setSort(nextSort);
-    setDirection(nextSort === "recommendedAt" ? "desc" : "asc");
-  }, []);
-  const toggleDirection = useCallback(() => {
-    setDirection((current) => (current === "asc" ? "desc" : "asc"));
-  }, []);
-  return { sort, direction, handleSort, toggleDirection };
+  const setSort = useCallback(
+    (sort: BookSort) => patch({ sort, direction: defaultDirection(sort) }),
+    [patch],
+  );
+  const toggleDirection = useCallback(
+    () =>
+      setState((current) => ({
+        ...current,
+        direction: current.direction === "asc" ? "desc" : "asc",
+      })),
+    [setState],
+  );
+  const toggleTag = useCallback(
+    (key: string, value: string) =>
+      setState((current) => {
+        const values = toggleValue(current.tags[key] ?? [], value);
+        const tags = { ...current.tags };
+        if (values.length === 0) delete tags[key];
+        else tags[key] = values;
+        return { ...current, tags };
+      }),
+    [setState],
+  );
+  const clearFilters = useCallback(
+    () =>
+      setState((current) => ({
+        ...current,
+        status: "all",
+        kind: "all",
+        reviewedOnly: false,
+        tags: {},
+      })),
+    [setState],
+  );
+  return { patch, setSort, toggleDirection, toggleTag, clearFilters };
 }
 
 export function useBookDiscovery(books: ShelfItem[]) {
-  const [statusFilter, setStatusFilter] = useState<BookFilter>("all");
-  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
-  const [reviewedOnly, setReviewedOnly] = useState(false);
-  const { sort, direction, handleSort, toggleDirection } = useShelfSort();
-  const { selectedTagValues, availableTagFacets, selectTagValue, clearTags } =
-    useTagSelection(books);
-  const visibleBooks = useMemo(() => {
-    const filtered = filterShelf(books, {
-      status: statusFilter,
-      kind: kindFilter,
-      reviewedOnly,
-      tags: selectedTagValues,
-    });
-    return filtered.sort((left, right) =>
-      compareBooks(left, right, sort, direction),
-    );
-  }, [
-    books,
-    direction,
-    kindFilter,
-    reviewedOnly,
-    selectedTagValues,
-    sort,
-    statusFilter,
-  ]);
-  const handleStatusFilter = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      setStatusFilter(event.currentTarget.value as BookFilter);
-    },
-    [],
-  );
-  const handleKindFilter = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      setKindFilter(event.currentTarget.value as KindFilter);
-    },
-    [],
-  );
-  const handleReviewedOnly = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      setReviewedOnly(event.currentTarget.checked);
-    },
-    [],
+  const [state, setState] = useQueryState(parseState, serializeState);
+  const actions = useDiscoveryActions(setState);
+
+  const filters: ShelfFilters = useMemo(
+    () => ({
+      status: state.status,
+      kind: state.kind,
+      reviewedOnly: state.reviewedOnly,
+      tags: state.tags,
+      search: state.search,
+    }),
+    [state.kind, state.reviewedOnly, state.search, state.status, state.tags],
   );
 
+  const visibleBooks = useMemo(
+    () =>
+      filterShelf(books, filters).sort((left, right) =>
+        compareBooks(left, right, state.sort, state.direction),
+      ),
+    [books, filters, state.direction, state.sort],
+  );
+
+  const tagFacets = useMemo(
+    () => collectTagFacets(books, filters),
+    [books, filters],
+  );
+
+  const selectedTagCount = Object.values(state.tags).reduce(
+    (sum, values) => sum + values.length,
+    0,
+  );
+  const hasActiveFilters =
+    state.status !== "all" ||
+    state.kind !== "all" ||
+    state.reviewedOnly ||
+    selectedTagCount > 0 ||
+    state.search.trim().length > 0;
+
   return {
-    availableTagFacets,
-    clearTags,
-    direction,
-    handleSort,
-    handleStatusFilter,
-    handleKindFilter,
-    handleReviewedOnly,
-    kindFilter,
-    reviewedOnly,
-    hasActiveFilters:
-      statusFilter !== "all" ||
-      kindFilter !== "all" ||
-      reviewedOnly ||
-      Object.keys(selectedTagValues).length > 0,
-    selectedTagValues,
-    selectTagValue,
-    sort,
-    statusFilter,
-    toggleDirection,
+    state,
+    ...actions,
+    tagFacets,
+    hasActiveFilters,
     visibleBooks,
   };
 }

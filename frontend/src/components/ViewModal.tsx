@@ -32,7 +32,12 @@ function HeroSection({
           </span>
         </div>
       )}
-      <button type="button" className="view-close" onClick={onClose}>
+      <button
+        type="button"
+        className="view-close btn-icon"
+        onClick={onClose}
+        aria-label="Close"
+      >
         {"\u00D7"}
       </button>
     </div>

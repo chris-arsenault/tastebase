@@ -22,7 +22,12 @@ export function MediaSlot({
     return (
       <div className={slotClass}>
         <img src={camera.preview} alt={label} />
-        <button type="button" className="media-remove" onClick={camera.clear}>
+        <button
+          type="button"
+          className="media-remove btn-icon"
+          onClick={camera.clear}
+          aria-label={`Remove ${label} photo`}
+        >
           {"\u00D7"}
         </button>
       </div>
@@ -265,7 +270,7 @@ export function FormFooter({
       <button type="button" className="btn-cancel" onClick={onClose}>
         Cancel
       </button>
-      <button type="submit" className="btn-submit" disabled={!canSubmit}>
+      <button type="submit" className="btn-primary" disabled={!canSubmit}>
         {submitStatus === "saving" ? "Saving..." : "Save"}
       </button>
     </footer>

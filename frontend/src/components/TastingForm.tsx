@@ -163,6 +163,25 @@ function MediaSection({
   );
 }
 
+function FormHeader({
+  formMode,
+  onClose,
+}: Readonly<{ formMode: "add" | "edit"; onClose: () => void }>) {
+  return (
+    <header className="form-header">
+      <h2>{formMode === "edit" ? "Edit Tasting" : "New Tasting"}</h2>
+      <button
+        type="button"
+        className="form-close btn-icon"
+        onClick={onClose}
+        aria-label="Close"
+      >
+        {"×"}
+      </button>
+    </header>
+  );
+}
+
 const resolveProductType = (
   record: TastingRecord | null,
   formMode: string,
@@ -222,12 +241,7 @@ export function TastingForm({
   return (
     <div className="form-overlay">
       <section className="form-modal" role="dialog" aria-modal="true">
-        <header className="form-header">
-          <h2>{formMode === "edit" ? "Edit Tasting" : "New Tasting"}</h2>
-          <button type="button" className="form-close" onClick={onClose}>
-            {"\u00D7"}
-          </button>
-        </header>
+        <FormHeader formMode={formMode} onClose={onClose} />
         <form className="form-body" onSubmit={handleFormSubmit}>
           <MediaSection
             formMode={formMode}

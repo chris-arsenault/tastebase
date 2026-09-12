@@ -61,9 +61,10 @@ function RecipeHeader({
         <span className="recipe-servings-control">
           <button
             type="button"
-            className="servings-btn"
+            className="servings-btn btn-icon"
             onClick={() => onServingsChange(Math.max(1, servings - 1))}
             disabled={servings <= 1}
+            aria-label="Fewer servings"
           >
             {"\u2212"}
           </button>
@@ -72,8 +73,9 @@ function RecipeHeader({
           </span>
           <button
             type="button"
-            className="servings-btn"
+            className="servings-btn btn-icon"
             onClick={() => onServingsChange(servings + 1)}
+            aria-label="More servings"
           >
             +
           </button>

@@ -78,6 +78,7 @@ export type Filters = {
   minHeat: string;
   date: string;
   sortBy: "date" | "name" | "score" | "style" | "heat";
+  sortDir: "asc" | "desc";
 };
 
 // Recipe types
