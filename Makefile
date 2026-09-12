@@ -17,7 +17,7 @@ typecheck:
 
 test:
 	cd backend && CARGO_TARGET_DIR=target-cov cargo test --release --lib
-	cd frontend && if pnpm exec vitest --help > /dev/null 2>&1; then pnpm exec vitest run; fi
+	cd frontend && pnpm exec vitest run --coverage --reporter=default --reporter=junit --outputFile=coverage/junit.xml
 
 terraform-fmt-check:
 	terraform fmt -check -recursive infrastructure/terraform/
