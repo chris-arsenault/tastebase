@@ -5,61 +5,63 @@ import {
   type SyntheticEvent,
   type SubmitEvent,
 } from "react";
-import type { BookRecommendation, BookStatus } from "../types";
+import type { ShelfItem, ShelfStatus } from "../types";
+import { PublicationDetails } from "./PublicationDetails";
+import {
+  bookStatusLabels,
+  publicationStatusLabels,
+  shelfStatusLabels,
+  creator,
+  isReviewed,
+} from "../utils/shelf";
 import { bookTagColorClass, formatBookTagKey } from "../utils/bookTags";
-
-const statusLabels: Record<BookStatus, string> = {
-  recommended: "Want to read",
-  reading: "Reading",
-  read: "Read",
-  did_not_finish: "Did not finish",
-};
 
 const ratingValues = [1, 2, 3, 4, 5];
 
-type BookAction = (id: string, status: BookStatus) => void;
-type ReviewAction = (id: string, rating: number, writeup: string) => void;
-type VisibilityAction = (id: string, isPublic: boolean) => void;
+type BookAction = (item: ShelfItem, status: ShelfStatus) => void;
+type ReviewAction = (item: ShelfItem, rating: number, writeup: string) => void;
 
-function BookCopy({ book }: Readonly<{ book: BookRecommendation }>) {
+function BookCopy({ book }: Readonly<{ book: ShelfItem }>) {
   return (
     <>
       <div className="book-card-heading">
         <div>
           <h2>{book.title}</h2>
-          <p className="book-author">by {book.author}</p>
+          {creator(book) && <p className="book-author">{creator(book)}</p>}
         </div>
         <span className={`book-status book-status-${book.status}`}>
-          {statusLabels[book.status]}
+          {shelfStatusLabels[book.status]}
         </span>
       </div>
+      <span className="book-review-state">
+        {isReviewed(book) ? "Reviewed" : "Not yet reviewed"}
+      </span>
       <BookMetadata book={book} />
       <p className="book-summary">{book.summary}</p>
       <div className="book-reason">
-        <h3>Why Claude recommended it</h3>
+        <h3>Why it’s on my shelf</h3>
         <p>{book.whyRecommended}</p>
       </div>
     </>
   );
 }
 
-function BookMetadata({ book }: Readonly<{ book: BookRecommendation }>) {
-  if (book.pageCount == null && !book.purchaseLink && book.tags.length === 0) {
-    return null;
-  }
-
+function BookMetadata({ book }: Readonly<{ book: ShelfItem }>) {
   return (
     <div className="book-metadata">
-      <div className="book-metadata-links">
-        {book.pageCount != null && <span>{book.pageCount} pages</span>}
-        {book.purchaseLink && (
-          <a href={book.purchaseLink} target="_blank" rel="noreferrer">
-            Purchase book
-          </a>
-        )}
-      </div>
+      {book.kind === "publication" && <PublicationDetails publication={book} />}
+      {book.kind === "book" && (
+        <div className="book-metadata-links">
+          {book.pageCount != null && <span>{book.pageCount} pages</span>}
+          {book.purchaseLink && (
+            <a href={book.purchaseLink} target="_blank" rel="noreferrer">
+              Purchase book
+            </a>
+          )}
+        </div>
+      )}
       {book.tags.length > 0 && (
-        <ul className="book-tags" aria-label="Book tags">
+        <ul className="book-tags" aria-label="Tags">
           {book.tags.map((tag) => (
             <li
               key={`${tag.key}=${tag.value}`}
@@ -91,11 +93,8 @@ function RatingDisplay({ rating }: Readonly<{ rating: number }>) {
   );
 }
 
-function SavedReview({
-  book,
-  showVisibility,
-}: Readonly<{ book: BookRecommendation; showVisibility: boolean }>) {
-  if (book.rating == null || !book.writeup) return null;
+function SavedReview({ book }: Readonly<{ book: ShelfItem }>) {
+  if (book.rating == null || !isReviewed(book)) return null;
   return (
     <div className="book-saved-review">
       <div className="book-review-heading">
@@ -103,9 +102,6 @@ function SavedReview({
         <RatingDisplay rating={book.rating} />
       </div>
       <p>{book.writeup}</p>
-      {showVisibility && book.isPublic && (
-        <span className="book-public-badge">Public</span>
-      )}
     </div>
   );
 }
@@ -144,7 +140,7 @@ function ReviewEditor({
   saving,
   onReview,
 }: Readonly<{
-  book: BookRecommendation;
+  book: ShelfItem;
   saving: boolean;
   onReview: ReviewAction;
 }>) {
@@ -164,10 +160,10 @@ function ReviewEditor({
     (event: SubmitEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (rating > 0 && writeup.trim()) {
-        onReview(book.id, rating, writeup.trim());
+        onReview(book, rating, writeup.trim());
       }
     },
-    [book.id, onReview, rating, writeup],
+    [book, onReview, rating, writeup],
   );
   const handleToggle = useCallback(
     (event: SyntheticEvent<HTMLDetailsElement>) => {
@@ -183,7 +179,7 @@ function ReviewEditor({
       onToggle={handleToggle}
     >
       <summary>
-        {book.rating == null ? "Rate this book" : "Edit my review"}
+        {book.rating == null ? "Write a review" : "Edit my review"}
       </summary>
       <form onSubmit={handleSubmit}>
         <BookRatingInput
@@ -217,31 +213,24 @@ function OwnerControls({
   book,
   saving,
   onStatus,
-  onVisibility,
 }: Readonly<{
-  book: BookRecommendation;
+  book: ShelfItem;
   saving: boolean;
   onStatus: BookAction;
-  onVisibility: VisibilityAction;
 }>) {
   const handleStatus = useCallback(
     (event: ChangeEvent<HTMLSelectElement>) => {
-      onStatus(book.id, event.currentTarget.value as BookStatus);
+      onStatus(book, event.currentTarget.value as ShelfStatus);
     },
-    [book.id, onStatus],
+    [book, onStatus],
   );
-  const handleVisibility = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      onVisibility(book.id, event.currentTarget.checked);
-    },
-    [book.id, onVisibility],
-  );
-  const hasFeedback = book.rating != null && Boolean(book.writeup.trim());
+  const statusLabels =
+    book.kind === "book" ? bookStatusLabels : publicationStatusLabels;
 
   return (
     <div className="book-owner-controls">
       <label>
-        Reading status
+        {book.kind === "book" ? "Reading status" : "Subscription status"}
         <select value={book.status} onChange={handleStatus} disabled={saving}>
           {Object.entries(statusLabels).map(([value, label]) => (
             <option key={value} value={value}>
@@ -250,31 +239,16 @@ function OwnerControls({
           ))}
         </select>
       </label>
-      <label className="book-public-toggle">
-        <input
-          type="checkbox"
-          checked={book.isPublic}
-          onChange={handleVisibility}
-          disabled={saving || !hasFeedback}
-        />
-        <span>Share this review publicly</span>
-      </label>
-      {!hasFeedback && (
-        <p className="book-visibility-note">
-          Add a rating and review before sharing.
-        </p>
-      )}
     </div>
   );
 }
 
 type BookCardProps = {
-  book: BookRecommendation;
+  book: ShelfItem;
   editable: boolean;
   saving: boolean;
   onStatus: BookAction;
   onReview: ReviewAction;
-  onVisibility: VisibilityAction;
 };
 
 export function BookCard({
@@ -283,20 +257,14 @@ export function BookCard({
   saving,
   onStatus,
   onReview,
-  onVisibility,
 }: Readonly<BookCardProps>) {
   return (
     <article className="book-card">
       <BookCopy book={book} />
-      <SavedReview book={book} showVisibility={editable} />
+      <SavedReview book={book} />
       {editable && (
         <>
-          <OwnerControls
-            book={book}
-            saving={saving}
-            onStatus={onStatus}
-            onVisibility={onVisibility}
-          />
+          <OwnerControls book={book} saving={saving} onStatus={onStatus} />
           <ReviewEditor book={book} saving={saving} onReview={onReview} />
         </>
       )}

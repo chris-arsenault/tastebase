@@ -6,7 +6,6 @@ use crate::types::{BookRecommendation, BookStatus, BookTag};
 pub async fn list_recommendations(
     pool: &PgPool,
     status: Option<BookStatus>,
-    public_only: bool,
 ) -> Result<Vec<BookRecommendation>, sqlx::Error> {
     sqlx::query_as(
         "SELECT b.*,
@@ -20,22 +19,10 @@ pub async fn list_recommendations(
          FROM book_recommendations b
          LEFT JOIN book_tags t ON t.book_id = b.id
          WHERE ($1::book_status IS NULL OR b.status = $1)
-           AND (NOT $2 OR b.is_public = true)
          GROUP BY b.id
-         ORDER BY
-           CASE WHEN $2 THEN 0 ELSE
-             CASE b.status
-               WHEN 'reading' THEN 0
-               WHEN 'recommended' THEN 1
-               WHEN 'read' THEN 2
-               ELSE 3
-             END
-           END,
-           CASE WHEN $2 THEN b.read_at END DESC NULLS LAST,
-           b.recommended_at DESC",
+         ORDER BY b.recommended_at DESC, b.id",
     )
     .bind(status)
-    .bind(public_only)
     .fetch_all(pool)
     .await
 }
@@ -93,12 +80,17 @@ pub struct BookTagCorpusRow {
     pub key: String,
     pub value: String,
     pub book_count: i64,
+    pub publication_count: i64,
+    pub item_count: i64,
 }
 
 pub async fn tag_corpus(pool: &PgPool) -> Result<Vec<BookTagCorpusRow>, sqlx::Error> {
     sqlx::query_as(
-        "SELECT tag_key AS key, tag_value AS value, count(*) AS book_count
-         FROM book_tags
+        "SELECT tag_key AS key, tag_value AS value, count(*) AS item_count,
+                count(*) FILTER (WHERE kind = 'book') AS book_count,
+                count(*) FILTER (WHERE kind = 'publication') AS publication_count
+         FROM (SELECT tag_key, tag_value, 'book' AS kind FROM book_tags
+               UNION ALL SELECT tag_key, tag_value, 'publication' AS kind FROM publication_tags) shelf_tags
          GROUP BY tag_key, tag_value
          ORDER BY tag_key, count(*) DESC, tag_value",
     )

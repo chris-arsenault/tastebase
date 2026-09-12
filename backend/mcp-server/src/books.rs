@@ -10,7 +10,7 @@ use crate::{JsonRpcResponse, mcp_operation, tool_json_response, tool_text_respon
 pub(crate) fn list_book_recommendations_tool_def() -> serde_json::Value {
     serde_json::json!({
         "name": "list_book_recommendations",
-        "description": "List the Tastebase owner's complete book recommendation history, including IDs, page counts, key/value tags, purchase links, reading status, 1-5 ratings, writeups, and visibility. Call this before making another round of recommendations so prior suggestions and feedback inform the next choices. Results are private unless the owner has explicitly shared a review.",
+        "description": "List the Tastebase owner's complete book recommendation history, including IDs, page counts, key/value tags, purchase links, reading status, 1-5 ratings, writeups. Call this before making another round of recommendations so prior suggestions and feedback inform the next choices. All recommendations and feedback are publicly visible on the bookshelf.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -27,7 +27,7 @@ pub(crate) fn list_book_recommendations_tool_def() -> serde_json::Value {
 pub(crate) fn save_book_recommendations_tool_def() -> serde_json::Value {
     serde_json::json!({
         "name": "save_book_recommendations",
-        "description": "Save one or more book recommendations to the private Tastebase shelf. Before assigning tags, call get_book_tag_corpus and preserve its existing keys and values wherever they fit. Invent a new tag key only rarely; a new value under an existing key is acceptable more often, but avoid synonyms that would fragment filtering. Recommending the same title and author again refreshes its recommendation metadata without erasing reading status or feedback.",
+        "description": "Save one or more book recommendations to the public Tastebase shelf. Before assigning tags, call get_book_tag_corpus and preserve its existing keys and values wherever they fit. Invent a new tag key only rarely; a new value under an existing key is acceptable more often, but avoid synonyms that would fragment filtering. Recommending the same title and author again refreshes its recommendation metadata without erasing reading status or feedback.",
         "inputSchema": {
             "type": "object",
             "required": ["recommendations"],
@@ -90,7 +90,7 @@ pub(crate) fn save_book_recommendations_tool_def() -> serde_json::Value {
 pub(crate) fn patch_book_recommendation_tool_def() -> serde_json::Value {
     serde_json::json!({
         "name": "patch_book_recommendation",
-        "description": "Patch recommendation metadata for one existing book without changing reading status, rating, writeup, or public visibility. Use the ID returned by list_book_recommendations. Before changing tags, call get_book_tag_corpus and preserve existing keys and values wherever accurate. New tag keys should be rare; new values under established keys are more acceptable, but avoid near-duplicates and synonyms.",
+        "description": "Patch recommendation metadata for one existing book without changing reading status, rating, or writeup. Use the ID returned by list_book_recommendations. Before changing tags, call get_book_tag_corpus and preserve existing keys and values wherever accurate. New tag keys should be rare; new values under established keys are more acceptable, but avoid near-duplicates and synonyms.",
         "inputSchema": {
             "type": "object",
             "required": ["id"],
@@ -140,7 +140,7 @@ pub(crate) fn patch_book_recommendation_tool_def() -> serde_json::Value {
 pub(crate) fn get_book_tag_corpus_tool_def() -> serde_json::Value {
     serde_json::json!({
         "name": "get_book_tag_corpus",
-        "description": "Fetch the complete reusable book-tag vocabulary with a book count for every key/value pair. Call this before saving or patching tags. Reuse existing keys almost always. Reuse existing values when they accurately describe the book; create new values more readily than new keys, while avoiding synonyms and spelling variants so sorting and filtering remain useful. If the corpus is empty, introduce only a small set of broad, durable keys.",
+        "description": "Fetch the shared book and publication tag vocabulary with an item count for every key/value pair. Call this before saving or patching tags. Reuse existing keys almost always. Reuse existing values when they accurately describe the book; create new values more readily than new keys, while avoiding synonyms and spelling variants so sorting and filtering remain useful. If the corpus is empty, introduce only a small set of broad, durable keys.",
         "inputSchema": {
             "type": "object",
             "properties": {}
@@ -307,7 +307,7 @@ async fn list_book_recommendations(
     state: &AppState,
     status: Option<BookStatus>,
 ) -> Result<serde_json::Value, AppError> {
-    let books = shared::books::list_recommendations(&state.db, status, false).await?;
+    let books = shared::books::list_recommendations(&state.db, status).await?;
     tracing::info!(count = books.len(), "book history listed via MCP");
     Ok(serde_json::json!({ "recommendations": books }))
 }
@@ -412,7 +412,7 @@ async fn save_book_recommendations(
     Ok(serde_json::json!({
         "recommendations": saved,
         "url": "https://tastebase.ahara.io/books",
-        "message": "Saved to the private Books shelf."
+        "message": "Saved to the public bookshelf."
     }))
 }
 
@@ -494,7 +494,7 @@ async fn patch_book_recommendation(
     tracing::info!(book_id = %updated_id, "book recommendation patched via MCP");
     Ok(serde_json::json!({
         "recommendation": book,
-        "message": "Recommendation metadata updated. Reading feedback and visibility were unchanged."
+        "message": "Recommendation metadata updated. Reading feedback was unchanged."
     }))
 }
 
@@ -508,6 +508,8 @@ async fn get_book_tag_corpus(state: &AppState) -> Result<serde_json::Value, AppE
             .push(serde_json::json!({
                 "value": row.value,
                 "bookCount": row.book_count,
+                "publicationCount": row.publication_count,
+                "itemCount": row.item_count,
             }));
     }
     let corpus = values_by_key

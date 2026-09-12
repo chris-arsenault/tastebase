@@ -1,83 +1,67 @@
 import { assertApiOk, fetchApi } from "./api";
 import { config } from "./config";
-import type { BookRecommendation, BookStatus } from "./types";
+import type {
+  BookRecommendation,
+  PublicationRecommendation,
+  ShelfItem,
+  ShelfStatus,
+} from "./types";
 
-const readBookResponse = async (
-  response: Response,
-): Promise<BookRecommendation> => {
-  const payload = (await response.json()) as { data: BookRecommendation };
-  return payload.data;
-};
-
-export const fetchBooks = async (
-  token: string,
-): Promise<BookRecommendation[]> => {
-  const response = await fetchApi(`${config.apiBaseUrl}/books`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  await assertApiOk(response, "Failed to fetch your book recommendations");
-  const payload = (await response.json()) as { data: BookRecommendation[] };
+async function fetchList<T>(path: string): Promise<T[]> {
+  const response = await fetchApi(`${config.apiBaseUrl}${path}`);
+  await assertApiOk(response, "Failed to fetch the bookshelf");
+  const payload = (await response.json()) as { data: T[] };
   return payload.data ?? [];
-};
+}
 
-export const fetchPublicBooks = async (): Promise<BookRecommendation[]> => {
-  const response = await fetchApi(`${config.apiBaseUrl}/books/public`);
-  await assertApiOk(response, "Failed to fetch the public bookshelf");
-  const payload = (await response.json()) as { data: BookRecommendation[] };
-  return payload.data ?? [];
-};
+export async function fetchShelf(): Promise<ShelfItem[]> {
+  const [books, publications] = await Promise.all([
+    fetchList<BookRecommendation>("/books/public"),
+    fetchList<PublicationRecommendation>("/books/publications"),
+  ]);
+  return [
+    ...books.map((book) => ({ ...book, kind: "book" as const })),
+    ...publications.map((publication) => ({
+      ...publication,
+      kind: "publication" as const,
+    })),
+  ];
+}
 
-export const updateBookStatus = async (
-  id: string,
-  status: BookStatus,
+async function updateItem(
+  item: ShelfItem,
+  action: string,
+  body: object,
   token: string,
-): Promise<BookRecommendation> => {
-  const response = await fetchApi(`${config.apiBaseUrl}/books/${id}/status`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ status }),
-  });
-  await assertApiOk(response, "Failed to update reading status");
-  return readBookResponse(response);
-};
-
-export const saveBookReview = async (
-  id: string,
-  rating: number,
-  writeup: string,
-  token: string,
-): Promise<BookRecommendation> => {
-  const response = await fetchApi(`${config.apiBaseUrl}/books/${id}/review`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ rating, writeup }),
-  });
-  await assertApiOk(response, "Failed to save your book review");
-  return readBookResponse(response);
-};
-
-export const updateBookVisibility = async (
-  id: string,
-  isPublic: boolean,
-  token: string,
-): Promise<BookRecommendation> => {
+): Promise<ShelfItem> {
+  const base = item.kind === "book" ? "/books" : "/books/publications";
   const response = await fetchApi(
-    `${config.apiBaseUrl}/books/${id}/visibility`,
+    `${config.apiBaseUrl}${base}/${item.id}/${action}`,
     {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ isPublic }),
+      body: JSON.stringify(body),
     },
   );
-  await assertApiOk(response, "Failed to update book visibility");
-  return readBookResponse(response);
-};
+  await assertApiOk(response, "Failed to update bookshelf item");
+  const payload = (await response.json()) as {
+    data: BookRecommendation | PublicationRecommendation;
+  };
+  return { ...payload.data, kind: item.kind } as ShelfItem;
+}
+
+export const updateShelfStatus = (
+  item: ShelfItem,
+  status: ShelfStatus,
+  token: string,
+) => updateItem(item, "status", { status }, token);
+
+export const saveShelfReview = (
+  item: ShelfItem,
+  rating: number,
+  writeup: string,
+  token: string,
+) => updateItem(item, "review", { rating, writeup }, token);

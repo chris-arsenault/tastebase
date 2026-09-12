@@ -182,7 +182,7 @@ function SectionToggle({
         className={section === "books" ? "active" : ""}
         onClick={() => onSectionChange("books")}
       >
-        Books
+        Bookshelf
       </button>
     </div>
   );

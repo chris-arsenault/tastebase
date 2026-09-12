@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useState, type ChangeEvent } from "react";
-import type { BookRecommendation, BookStatus } from "../types";
+import type { ShelfItem, ShelfStatus } from "../types";
+import { creator, filterShelf } from "../utils/shelf";
 
-export type BookFilter = "all" | BookStatus;
+export type BookFilter = "all" | ShelfStatus;
+export type KindFilter = "all" | ShelfItem["kind"];
 export type BookSort = "recommendedAt" | "title" | "author" | "pageCount";
 export type SortDirection = "asc" | "desc";
 export type BookTagFacet = { key: string; values: string[] };
@@ -24,9 +26,9 @@ function comparePageCounts(
   return direction === "asc" ? left - right : right - left;
 }
 
-function textSortValue(book: BookRecommendation, sort: BookSort): string {
+function textSortValue(book: ShelfItem, sort: BookSort): string {
   if (sort === "title") return book.title;
-  if (sort === "author") return book.author;
+  if (sort === "author") return creator(book);
   return book.recommendedAt;
 }
 
@@ -40,14 +42,18 @@ function compareTextValues(
 }
 
 function compareBooks(
-  left: BookRecommendation,
-  right: BookRecommendation,
+  left: ShelfItem,
+  right: ShelfItem,
   sort: BookSort,
   direction: SortDirection,
 ): number {
   let comparison: number;
   if (sort === "pageCount") {
-    comparison = comparePageCounts(left.pageCount, right.pageCount, direction);
+    comparison = comparePageCounts(
+      left.kind === "book" ? left.pageCount : null,
+      right.kind === "book" ? right.pageCount : null,
+      direction,
+    );
   } else {
     comparison = compareTextValues(
       textSortValue(left, sort),
@@ -58,18 +64,7 @@ function compareBooks(
   return comparison || collator.compare(left.title, right.title);
 }
 
-function matchesSelectedTags(
-  book: BookRecommendation,
-  selectedTagValues: Record<string, string>,
-): boolean {
-  return Object.entries(selectedTagValues).every(([key, value]) =>
-    book.tags.some((tag) => tag.key === key && tag.value === value),
-  );
-}
-
-function collectAvailableTagFacets(
-  books: BookRecommendation[],
-): BookTagFacet[] {
+function collectAvailableTagFacets(books: ShelfItem[]): BookTagFacet[] {
   const valuesByKey = new Map<string, Set<string>>();
   for (const book of books) {
     for (const tag of book.tags) {
@@ -86,13 +81,7 @@ function collectAvailableTagFacets(
     .sort((left, right) => collator.compare(left.key, right.key));
 }
 
-export function useBookDiscovery(
-  books: BookRecommendation[],
-  isOwnerView: boolean,
-) {
-  const [statusFilter, setStatusFilter] = useState<BookFilter>("all");
-  const [sort, setSort] = useState<BookSort>("recommendedAt");
-  const [direction, setDirection] = useState<SortDirection>("desc");
+function useTagSelection(books: ShelfItem[]) {
   const [selectedTagValues, setSelectedTagValues] = useState<
     Record<string, string>
   >({});
@@ -100,32 +89,6 @@ export function useBookDiscovery(
     () => collectAvailableTagFacets(books),
     [books],
   );
-  const visibleBooks = useMemo(() => {
-    const filtered = books.filter(
-      (book) =>
-        (!isOwnerView ||
-          statusFilter === "all" ||
-          book.status === statusFilter) &&
-        matchesSelectedTags(book, selectedTagValues),
-    );
-    return filtered.sort((left, right) =>
-      compareBooks(left, right, sort, direction),
-    );
-  }, [books, direction, isOwnerView, selectedTagValues, sort, statusFilter]);
-  const handleStatusFilter = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      setStatusFilter(event.currentTarget.value as BookFilter);
-    },
-    [],
-  );
-  const handleSort = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    const nextSort = event.currentTarget.value as BookSort;
-    setSort(nextSort);
-    setDirection(nextSort === "recommendedAt" ? "desc" : "asc");
-  }, []);
-  const toggleDirection = useCallback(() => {
-    setDirection((current) => (current === "asc" ? "desc" : "asc"));
-  }, []);
   const selectTagValue = useCallback((key: string, value: string) => {
     setSelectedTagValues((current) => {
       const next = { ...current };
@@ -135,6 +98,67 @@ export function useBookDiscovery(
     });
   }, []);
   const clearTags = useCallback(() => setSelectedTagValues({}), []);
+  return { selectedTagValues, availableTagFacets, selectTagValue, clearTags };
+}
+
+function useShelfSort() {
+  const [sort, setSort] = useState<BookSort>("recommendedAt");
+  const [direction, setDirection] = useState<SortDirection>("desc");
+  const handleSort = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    const nextSort = event.currentTarget.value as BookSort;
+    setSort(nextSort);
+    setDirection(nextSort === "recommendedAt" ? "desc" : "asc");
+  }, []);
+  const toggleDirection = useCallback(() => {
+    setDirection((current) => (current === "asc" ? "desc" : "asc"));
+  }, []);
+  return { sort, direction, handleSort, toggleDirection };
+}
+
+export function useBookDiscovery(books: ShelfItem[]) {
+  const [statusFilter, setStatusFilter] = useState<BookFilter>("all");
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [reviewedOnly, setReviewedOnly] = useState(false);
+  const { sort, direction, handleSort, toggleDirection } = useShelfSort();
+  const { selectedTagValues, availableTagFacets, selectTagValue, clearTags } =
+    useTagSelection(books);
+  const visibleBooks = useMemo(() => {
+    const filtered = filterShelf(books, {
+      status: statusFilter,
+      kind: kindFilter,
+      reviewedOnly,
+      tags: selectedTagValues,
+    });
+    return filtered.sort((left, right) =>
+      compareBooks(left, right, sort, direction),
+    );
+  }, [
+    books,
+    direction,
+    kindFilter,
+    reviewedOnly,
+    selectedTagValues,
+    sort,
+    statusFilter,
+  ]);
+  const handleStatusFilter = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      setStatusFilter(event.currentTarget.value as BookFilter);
+    },
+    [],
+  );
+  const handleKindFilter = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      setKindFilter(event.currentTarget.value as KindFilter);
+    },
+    [],
+  );
+  const handleReviewedOnly = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setReviewedOnly(event.currentTarget.checked);
+    },
+    [],
+  );
 
   return {
     availableTagFacets,
@@ -142,8 +166,14 @@ export function useBookDiscovery(
     direction,
     handleSort,
     handleStatusFilter,
+    handleKindFilter,
+    handleReviewedOnly,
+    kindFilter,
+    reviewedOnly,
     hasActiveFilters:
-      (isOwnerView && statusFilter !== "all") ||
+      statusFilter !== "all" ||
+      kindFilter !== "all" ||
+      reviewedOnly ||
       Object.keys(selectedTagValues).length > 0,
     selectedTagValues,
     selectTagValue,

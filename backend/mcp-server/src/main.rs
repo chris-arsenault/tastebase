@@ -12,6 +12,7 @@ use shared::types::{RecipeSource, UnitType};
 use uuid::Uuid;
 
 mod books;
+mod publications;
 
 const SERVICE_NAME: &str = "tastebase-mcp-server";
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
@@ -247,7 +248,7 @@ fn handle_ping(msg: McpMessage) -> Result<JsonRpcResponse, JsonRpcResponse> {
 }
 
 fn handle_tools_list(msg: McpMessage) -> Result<JsonRpcResponse, JsonRpcResponse> {
-    let tools = vec![
+    let mut tools = vec![
         list_recipes_tool_def(),
         save_recipe_tool_def(),
         update_recipe_tool_def(),
@@ -256,6 +257,7 @@ fn handle_tools_list(msg: McpMessage) -> Result<JsonRpcResponse, JsonRpcResponse
         books::patch_book_recommendation_tool_def(),
         books::get_book_tag_corpus_tool_def(),
     ];
+    tools.extend(publications::tool_defs());
     tracing::info!(tool_count = tools.len(), "tools/list");
     Ok(jsonrpc_result(
         msg.id,
@@ -644,7 +646,18 @@ async fn handle_tools_call(
                 .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing arguments"))?;
             Ok(books::dispatch_patch_book_recommendation(msg.id, state, user, arguments).await)
         }
-        "get_book_tag_corpus" => Ok(books::dispatch_get_book_tag_corpus(msg.id, state, user).await),
+        "get_book_tag_corpus" | "get_publication_tag_corpus" => {
+            Ok(books::dispatch_get_book_tag_corpus(msg.id, state, user).await)
+        }
+        "list_publication_recommendations"
+        | "save_publication_recommendations"
+        | "patch_publication_recommendation" => {
+            let arguments = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
+            Ok(publications::dispatch(msg.id, state, &tool_name, arguments).await)
+        }
         _ => Err(jsonrpc_error(
             msg.id,
             -32602,

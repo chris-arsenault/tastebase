@@ -176,3 +176,62 @@ export type BookRecommendation = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type PublicationStatus =
+  | "recommended"
+  | "subscribed"
+  | "cancelled"
+  | "not_interested";
+export type ShelfStatus = BookStatus | PublicationStatus;
+
+export type SubscriptionOption = {
+  label: string;
+  formats: ("print" | "digital")[];
+  region: string | null;
+  accessModel: "subscription" | "membership" | "free" | "institutional";
+  price: {
+    amount: string;
+    currency: string;
+    period: "month" | "year" | "issue";
+    priceType: "standard" | "introductory" | null;
+  } | null;
+  url: string | null;
+  verifiedAt: string | null;
+  notes: string | null;
+};
+
+export type PublicationRecommendation = Pick<
+  BookRecommendation,
+  | "id"
+  | "title"
+  | "summary"
+  | "whyRecommended"
+  | "tags"
+  | "rating"
+  | "writeup"
+  | "recommendedAt"
+  | "createdAt"
+  | "updatedAt"
+> & {
+  publisher: string | null;
+  homepage: string | null;
+  publicationType: "magazine" | "journal" | "review" | "newsletter" | "other";
+  cadence: { label: string; issuesPerYear: number | null };
+  audienceLevel:
+    | "general"
+    | "informed-generalist"
+    | "professional"
+    | "academic-adjacent"
+    | "academic";
+  editorialHome: { country: string | null; city: string | null } | null;
+  subscriptions: SubscriptionOption[];
+  outlook: {
+    summary: string;
+    relationship: "aligned" | "compatible" | "neutral" | "contrast" | "mixed";
+  } | null;
+  status: PublicationStatus;
+};
+
+export type ShelfItem =
+  | (BookRecommendation & { kind: "book" })
+  | (PublicationRecommendation & { kind: "publication" });

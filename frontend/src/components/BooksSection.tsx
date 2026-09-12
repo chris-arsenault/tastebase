@@ -14,17 +14,20 @@ type BooksHook = ReturnType<typeof useBooks>;
 type BookDiscovery = ReturnType<typeof useBookDiscovery>;
 
 const filterLabels: Record<BookFilter, string> = {
-  all: "All books",
-  recommended: "Want to read",
+  all: "All statuses",
+  recommended: "Recommended",
   reading: "Reading",
   read: "Read",
   did_not_finish: "Did not finish",
+  subscribed: "Subscribed",
+  cancelled: "Cancelled",
+  not_interested: "Not interested",
 };
 
 const sortLabels: Record<BookSort, string> = {
   recommendedAt: "Recommendation date",
   title: "Name",
-  author: "Author",
+  author: "Author / publisher",
   pageCount: "Page count",
 };
 
@@ -32,11 +35,10 @@ function BooksIntro({ booksHook }: Readonly<{ booksHook: BooksHook }>) {
   return (
     <div className="books-intro">
       <div>
-        <h1>{booksHook.isOwnerView ? "My books" : "Book reviews"}</h1>
+        <h1>Bookshelf</h1>
         <p>
-          {booksHook.isOwnerView
-            ? "Recommendations, reading progress, and reviews in one place."
-            : "My notes on books I've read."}
+          Books, publications, and my reviews. Everything on the shelf is
+          visible; use “Reviewed only” for items I’ve vetted.
         </p>
       </div>
       <button
@@ -141,31 +143,46 @@ function SortDirectionButton({
 }
 
 function BooksControls({
-  isOwnerView,
   discovery,
 }: Readonly<{
-  isOwnerView: boolean;
   discovery: BookDiscovery;
 }>) {
   return (
     <div className="books-controls">
       <div className="books-filter">
         <div className="books-filter-fields">
-          {isOwnerView && (
-            <label>
-              Show
-              <select
-                value={discovery.statusFilter}
-                onChange={discovery.handleStatusFilter}
-              >
-                {Object.entries(filterLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+          <label>
+            Type
+            <select
+              value={discovery.kindFilter}
+              onChange={discovery.handleKindFilter}
+            >
+              <option value="all">Books and publications</option>
+              <option value="book">Books</option>
+              <option value="publication">Publications</option>
+            </select>
+          </label>
+          <label>
+            Status
+            <select
+              value={discovery.statusFilter}
+              onChange={discovery.handleStatusFilter}
+            >
+              {Object.entries(filterLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="books-reviewed-filter">
+            <input
+              type="checkbox"
+              checked={discovery.reviewedOnly}
+              onChange={discovery.handleReviewedOnly}
+            />
+            Reviewed only
+          </label>
           <label>
             Sort by
             <select value={discovery.sort} onChange={discovery.handleSort}>
@@ -182,7 +199,7 @@ function BooksControls({
           />
         </div>
         <span>
-          {discovery.visibleBooks.length} book
+          {discovery.visibleBooks.length} item
           {discovery.visibleBooks.length === 1 ? "" : "s"}
         </span>
       </div>
@@ -200,17 +217,17 @@ function emptyBookMessage(
   isOwnerView: boolean,
   hasActiveFilters: boolean,
 ): string {
-  if (hasActiveFilters) return "No books match these filters.";
+  if (hasActiveFilters) return "No items match these filters.";
   if (isOwnerView) {
-    return "No books yet. Ask Claude for a recommendation to get started.";
+    return "No items yet. Ask your connected assistant for a book or publication recommendation.";
   }
-  return "No book reviews yet.";
+  return "No bookshelf items yet.";
 }
 
 export function BooksSection({
   booksHook,
 }: Readonly<{ booksHook: BooksHook }>) {
-  const discovery = useBookDiscovery(booksHook.books, booksHook.isOwnerView);
+  const discovery = useBookDiscovery(booksHook.books);
   const emptyMessage = emptyBookMessage(
     booksHook.isOwnerView,
     discovery.hasActiveFilters,
@@ -220,13 +237,10 @@ export function BooksSection({
     <main className="content books-section">
       <BooksIntro booksHook={booksHook} />
       {!booksHook.loading && booksHook.books.length > 0 && (
-        <BooksControls
-          isOwnerView={booksHook.isOwnerView}
-          discovery={discovery}
-        />
+        <BooksControls discovery={discovery} />
       )}
       {booksHook.error && <div className="error-banner">{booksHook.error}</div>}
-      {booksHook.loading && <div className="loading">Loading books...</div>}
+      {booksHook.loading && <div className="loading">Loading bookshelf...</div>}
       {!booksHook.loading && discovery.visibleBooks.length === 0 && (
         <div className="empty-state">
           <span className="empty-icon">📚</span>
@@ -237,13 +251,12 @@ export function BooksSection({
         <div className="book-grid">
           {discovery.visibleBooks.map((book) => (
             <BookCard
-              key={book.id}
+              key={`${book.kind}:${book.id}`}
               book={book}
               editable={booksHook.isOwnerView}
-              saving={booksHook.savingId === book.id}
+              saving={booksHook.savingId !== ""}
               onStatus={booksHook.setStatus}
               onReview={booksHook.saveReview}
-              onVisibility={booksHook.setVisibility}
             />
           ))}
         </div>

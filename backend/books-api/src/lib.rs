@@ -6,7 +6,9 @@ use serde::Deserialize;
 use shared::AppState;
 use shared::auth::RequireAuth;
 use shared::error::AppError;
-use shared::types::{BookRecommendation, BookStatus};
+use shared::types::BookStatus;
+
+mod publications;
 use uuid::Uuid;
 
 pub const SERVICE_NAME: &str = "tastebase-books-api";
@@ -21,7 +23,7 @@ async fn list_books(
 ) -> Result<Json<serde_json::Value>, AppError> {
     book_operation(&state, "tastebase.books.list")
         .observe(async move {
-            let books = shared::books::list_recommendations(&state.db, None, false).await?;
+            let books = shared::books::list_recommendations(&state.db, None).await?;
 
             tracing::info!(count = books.len(), "books listed");
             Ok(Json(serde_json::json!({ "data": books })))
@@ -34,7 +36,7 @@ async fn list_public_books(
 ) -> Result<Json<serde_json::Value>, AppError> {
     book_operation(&state, "tastebase.books.list_public")
         .observe(async move {
-            let books = shared::books::list_recommendations(&state.db, None, true).await?;
+            let books = shared::books::list_recommendations(&state.db, None).await?;
 
             tracing::info!(count = books.len(), "public books listed");
             Ok(Json(serde_json::json!({ "data": books })))
@@ -133,60 +135,13 @@ async fn save_review(
         .await
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdateVisibilityInput {
-    is_public: bool,
-}
-
-async fn update_visibility(
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    RequireAuth(_user): RequireAuth,
-    Json(input): Json<UpdateVisibilityInput>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    book_operation(&state, "tastebase.books.update_visibility")
-        .with_detail("book.id", id.to_string())
-        .with_detail("book.is_public", input.is_public)
-        .observe(async move {
-            let current: BookRecommendation = shared::books::get_recommendation(&state.db, id)
-                .await?
-                .ok_or(AppError::NotFound)?;
-
-            if input.is_public && (current.rating.is_none() || current.writeup.trim().is_empty()) {
-                return Err(AppError::BadRequest(
-                    "Add a rating and review before sharing this book".into(),
-                ));
-            }
-
-            let updated_id: Uuid = sqlx::query_scalar(
-                "UPDATE book_recommendations
-                 SET is_public = $1, updated_at = now()
-                 WHERE id = $2
-                 RETURNING id",
-            )
-            .bind(input.is_public)
-            .bind(id)
-            .fetch_optional(&state.db)
-            .await?
-            .ok_or(AppError::NotFound)?;
-            let book = shared::books::get_recommendation(&state.db, updated_id)
-                .await?
-                .ok_or(AppError::NotFound)?;
-
-            tracing::info!(book_id = %id, is_public = input.is_public, "book visibility updated");
-            Ok(Json(serde_json::json!({ "data": book })))
-        })
-        .await
-}
-
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/books", get(list_books))
         .route("/books/public", get(list_public_books))
         .route("/books/{id}/status", put(update_status))
         .route("/books/{id}/review", put(save_review))
-        .route("/books/{id}/visibility", put(update_visibility))
+        .merge(publications::router())
         .layer(shared::cors::layer())
         .with_state(state)
 }

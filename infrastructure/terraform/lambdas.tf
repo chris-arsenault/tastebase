@@ -75,7 +75,7 @@ module "api" {
       binary = "${path.module}/../../backend/target/lambda/books-api/bootstrap"
       routes = [
         # This specific public route must run before the authenticated /books/* rule.
-        { priority = 209, paths = ["/books/public"], methods = ["GET", "HEAD"], authenticated = false },
+        { priority = 209, paths = ["/books/public", "/books/publications"], methods = ["GET", "HEAD"], authenticated = false },
         { priority = 215, paths = ["/books", "/books/*"], authenticated = true },
       ]
     }
