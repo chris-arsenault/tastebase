@@ -60,6 +60,7 @@ Schema: `users` + `cognito_users` (shared identity), `tastings` (tasting records
 `recipes` + `recipe_ingredients` + `recipe_steps` + `collections` (recipe system),
 `recipe_reviews` + `recipe_images` (recipe media and reviews), and
 `book_recommendations` + `book_tags`, and `publication_recommendations` + `publication_tags` (public recommendations and owner feedback, shared key/value vocabulary, and typed publication-specific JSONB metadata).
+`publication_issues` stores issue metadata and per-issue feedback separately from publication recommendations.
 
 ## Platform Integration
 
@@ -71,6 +72,8 @@ Follows `~/src/ahara/INTEGRATION.md`. Registered in ahara-control and ahara-serv
 - ALB jwt-validation for tastings/recipes write routes and all private book routes; MCP uses app-level auth for WWW-Authenticate header
 - Tastebase has one authenticated owner; anonymous visitors can read tastings, recipes, and all books and publications, including feedback
 - Reviewed means a saved rating and non-empty writeup, independent of reading or subscription status
+- Authenticated MCP agents can save owner reviews from conversation; magazine reviews are per issue, with independently editable issue metadata
+- Existing recommendation saves and patches require optional `update=true` (default false); recommendation updates are normally incorrect for reading feedback, so agents should save reviews instead
 - Publication prices are exact decimal strings with currency, period and optional verification date per subscription option
 - Book tags are normalized key/value pairs; MCP reads the existing corpus before classifying recommendations so keys remain stable and values remain reusable
 - Processing Lambda is invoked asynchronously for media enrichment (tastings + recipe reviews)

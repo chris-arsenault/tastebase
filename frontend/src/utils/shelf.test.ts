@@ -66,6 +66,7 @@ const publication: ShelfItem = {
       notes: "Delivery included",
     },
   ],
+  issues: [],
 };
 const all: ShelfFilters = {
   status: "all",
@@ -162,6 +163,69 @@ describe("bookshelf facets", () => {
     const fit = facets.find((facet) => facet.key === "fit");
     // The outlook filter and kind=book both apply to the fit facet.
     expect(fit?.values).toEqual([{ value: "high", count: 1 }]);
+  });
+});
+
+describe("magazine issues", () => {
+  it("shows magazine issue metadata and feedback and includes it in reviewed filtering", () => {
+    const magazine: ShelfItem = {
+      ...publication,
+      publicationType: "magazine",
+      rating: null,
+      writeup: "",
+      issues: [
+        {
+          id: "issue",
+          publicationId: publication.id,
+          label: "October 2026",
+          title: "Special edition",
+          volume: "12",
+          issueNumber: "10",
+          publicationDate: "2026-10-01",
+          pageCount: 96,
+          url: "https://example.org/issue",
+          summary: "Issue summary",
+          rating: 5,
+          writeup: "The essays stayed with me.",
+          createdAt: common.createdAt,
+          updatedAt: common.updatedAt,
+        },
+      ],
+    };
+    expect(filterShelf([magazine], { ...all, reviewedOnly: true })).toEqual([
+      magazine,
+    ]);
+    expect(
+      isReviewed({
+        ...magazine,
+        issues: [{ ...magazine.issues[0], writeup: " " }],
+      }),
+    ).toBe(false);
+    const html = renderToStaticMarkup(
+      createElement(BookCard, {
+        book: magazine,
+        editable: true,
+        saving: false,
+        onStatus: noop,
+        onReview: noop,
+      }),
+    );
+    for (const text of [
+      "October 2026",
+      "Special edition",
+      "Vol. 12",
+      "No. 10",
+      "2026-10-01",
+      "96",
+      "Issue summary",
+      "The essays stayed with me.",
+      "5/5",
+      "Includes reviewed issues",
+    ]) {
+      expect(html).toContain(text);
+    }
+    expect(html).not.toContain("Save review");
+    expect(html).toContain("Subscription status");
   });
 });
 

@@ -6,6 +6,7 @@ use serde::Deserialize;
 use shared::AppState;
 use shared::auth::RequireAuth;
 use shared::error::AppError;
+use shared::shelf_reviews::ReviewInput as SaveReviewInput;
 use shared::types::BookStatus;
 
 mod publications;
@@ -85,12 +86,6 @@ async fn update_status(
         .await
 }
 
-#[derive(Debug, Deserialize)]
-struct SaveReviewInput {
-    rating: i16,
-    writeup: String,
-}
-
 async fn save_review(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -101,33 +96,7 @@ async fn save_review(
         .with_detail("book.id", id.to_string())
         .with_detail("book.rating", input.rating as i64)
         .observe(async move {
-            let writeup = shared::sanitize::clean(&input.writeup).trim().to_owned();
-            shared::validate::validate_book_review(input.rating, &writeup)?;
-            let updated_id: Uuid = sqlx::query_scalar(
-                "UPDATE book_recommendations
-                 SET rating = $1,
-                     writeup = $2,
-                     status = CASE
-                       WHEN status = 'did_not_finish'::book_status THEN status
-                       ELSE 'read'::book_status
-                     END,
-                     read_at = CASE
-                       WHEN status = 'did_not_finish'::book_status THEN read_at
-                       ELSE COALESCE(read_at, now())
-                     END,
-                     updated_at = now()
-                 WHERE id = $3
-                 RETURNING id",
-            )
-            .bind(input.rating)
-            .bind(writeup)
-            .bind(id)
-            .fetch_optional(&state.db)
-            .await?
-            .ok_or(AppError::NotFound)?;
-            let book = shared::books::get_recommendation(&state.db, updated_id)
-                .await?
-                .ok_or(AppError::NotFound)?;
+            let book = shared::shelf_reviews::save_book_review(&state.db, id, input).await?;
 
             tracing::info!(book_id = %id, "book review saved");
             Ok(Json(serde_json::json!({ "data": book })))

@@ -169,6 +169,34 @@
   border-left-color: var(--state-ok-mark);
 }
 
+.publication-issues summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ember-deep);
+}
+
+.publication-issues ul {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.publication-issue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border-faint);
+}
+
+.publication-issue h3,
+.publication-issue h4 {
+  margin: 0;
+  font-family: inherit;
+  font-size: var(--text-sm);
+}
+
 .book-review-heading {
   display: flex;
   align-items: center;

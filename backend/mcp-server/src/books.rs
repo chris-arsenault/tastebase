@@ -1,5 +1,6 @@
 use serde::{Deserialize, Deserializer};
 use shared::AppState;
+use shared::books::PreparedBookRecommendation;
 use shared::error::AppError;
 use shared::types::{BookRecommendation, BookStatus, BookTag, UserContext};
 use std::collections::BTreeMap;
@@ -27,11 +28,12 @@ pub(crate) fn list_book_recommendations_tool_def() -> serde_json::Value {
 pub(crate) fn save_book_recommendations_tool_def() -> serde_json::Value {
     serde_json::json!({
         "name": "save_book_recommendations",
-        "description": "Save one or more book recommendations to the public Tastebase shelf. Before assigning tags, call get_book_tag_corpus and preserve its existing keys and values wherever they fit. Invent a new tag key only rarely; a new value under an existing key is acceptable more often, but avoid synonyms that would fragment filtering. Recommending the same title and author again refreshes its recommendation metadata without erasing reading status or feedback.",
+        "description": "Save initial book recommendations to the public Tastebase shelf. Read list_book_recommendations and get_book_tag_corpus first; reuse existing tag keys and values wherever accurate. Existing case-insensitive title/author identities are rejected unless update=true. Updating recommendations is normally incorrect: use save_book_review to record the owner's experience from your conversation instead. Only set update=true for an explicitly requested metadata correction; it preserves reading status and feedback. A conflict rejects the entire batch.",
         "inputSchema": {
             "type": "object",
             "required": ["recommendations"],
             "properties": {
+                "update": { "type": "boolean", "default": false, "description": "Explicit permission to change existing recommendation metadata. Normally leave false and save a review instead." },
                 "recommendations": {
                     "type": "array",
                     "minItems": 1,
@@ -90,12 +92,13 @@ pub(crate) fn save_book_recommendations_tool_def() -> serde_json::Value {
 pub(crate) fn patch_book_recommendation_tool_def() -> serde_json::Value {
     serde_json::json!({
         "name": "patch_book_recommendation",
-        "description": "Patch recommendation metadata for one existing book without changing reading status, rating, or writeup. Use the ID returned by list_book_recommendations. Before changing tags, call get_book_tag_corpus and preserve existing keys and values wherever accurate. New tag keys should be rare; new values under established keys are more acceptable, but avoid near-duplicates and synonyms.",
+        "description": "Correct existing book recommendation metadata only when explicitly requested, with update=true (default false). Updating recommendations is normally incorrect: use save_book_review for the owner's feedback instead. Read list_book_recommendations first and use its ID. Reading status and feedback survive. Before changing tags, read get_book_tag_corpus and reuse existing keys and values.",
         "inputSchema": {
             "type": "object",
             "required": ["id"],
             "minProperties": 2,
             "properties": {
+                "update": { "type": "boolean", "default": false },
                 "id": {
                     "type": "string",
                     "format": "uuid",
@@ -154,11 +157,15 @@ struct ListBookRecommendationsParams {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SaveBookRecommendationsParams {
     recommendations: Vec<BookRecommendationParam>,
+    #[serde(default)]
+    update: bool,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BookRecommendationParam {
     title: String,
     author: String,
@@ -169,19 +176,12 @@ struct BookRecommendationParam {
     purchase_link: Option<String>,
 }
 
-struct PreparedBookRecommendation {
-    title: String,
-    author: String,
-    summary: String,
-    why_recommended: String,
-    page_count: Option<i32>,
-    tags: Option<Vec<BookTag>>,
-    purchase_link: Option<String>,
-}
-
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PatchBookRecommendationParams {
     id: Uuid,
+    #[serde(default)]
+    update: bool,
     title: Option<String>,
     author: Option<String>,
     summary: Option<String>,
@@ -364,49 +364,8 @@ async fn save_book_recommendations(
         .map(prepare_recommendation)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let mut transaction = state.db.begin().await?;
-    let mut saved_ids = Vec::with_capacity(recommendations.len());
-    for recommendation in recommendations {
-        let book_id: Uuid = sqlx::query_scalar(
-            "INSERT INTO book_recommendations
-               (id, title, author, summary, why_recommended, page_count, purchase_link)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (lower(title), lower(author))
-             DO UPDATE SET
-               summary = EXCLUDED.summary,
-               why_recommended = EXCLUDED.why_recommended,
-               page_count = COALESCE(EXCLUDED.page_count, book_recommendations.page_count),
-               purchase_link = COALESCE(
-                   EXCLUDED.purchase_link,
-                   book_recommendations.purchase_link
-               ),
-               updated_at = now()
-             RETURNING id",
-        )
-        .bind(Uuid::new_v4())
-        .bind(recommendation.title)
-        .bind(recommendation.author)
-        .bind(recommendation.summary)
-        .bind(recommendation.why_recommended)
-        .bind(recommendation.page_count)
-        .bind(recommendation.purchase_link)
-        .fetch_one(&mut *transaction)
-        .await?;
-
-        if let Some(tags) = recommendation.tags {
-            shared::books::replace_tags(&mut transaction, book_id, &tags).await?;
-        }
-        saved_ids.push(book_id);
-    }
-
-    transaction.commit().await?;
-    let mut saved = Vec::with_capacity(saved_ids.len());
-    for id in saved_ids {
-        let book = shared::books::get_recommendation(&state.db, id)
-            .await?
-            .ok_or(AppError::NotFound)?;
-        saved.push(book);
-    }
+    let saved =
+        shared::books::save_recommendations(&state.db, recommendations, params.update).await?;
 
     tracing::info!(count = saved.len(), "book recommendations saved via MCP");
     Ok(serde_json::json!({
@@ -420,6 +379,7 @@ async fn patch_book_recommendation(
     state: &AppState,
     params: PatchBookRecommendationParams,
 ) -> Result<serde_json::Value, AppError> {
+    shared::shelf_reviews::require_update(params.update)?;
     let title = params.title.map(clean);
     let author = params.author.map(clean);
     let summary = params.summary.map(clean);
@@ -522,4 +482,40 @@ async fn get_book_tag_corpus(state: &AppState) -> Result<serde_json::Value, AppE
         "tagCorpus": corpus,
         "guidance": "Reuse existing keys almost always. Reuse an existing value when it fits; add a new value more readily than a new key, but avoid synonyms and spelling variants."
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn recommendation_updates_require_explicit_opt_in() {
+        let params: SaveBookRecommendationsParams =
+            serde_json::from_value(json!({"recommendations":[]})).unwrap();
+        assert!(!params.update);
+        let id = Uuid::new_v4();
+        let params: PatchBookRecommendationParams =
+            serde_json::from_value(json!({"id":id,"summary":"Correction"})).unwrap();
+        assert!(!params.update);
+        assert!(shared::shelf_reviews::require_update(params.update).is_err());
+        let params: PatchBookRecommendationParams =
+            serde_json::from_value(json!({"id":id,"summary":"Correction","update":true})).unwrap();
+        assert!(shared::shelf_reviews::require_update(params.update).is_ok());
+        assert!(
+            serde_json::from_value::<PatchBookRecommendationParams>(
+                json!({"id":id,"rating":4,"update":true})
+            )
+            .is_err()
+        );
+        for definition in [
+            save_book_recommendations_tool_def(),
+            patch_book_recommendation_tool_def(),
+        ] {
+            assert_eq!(
+                definition["inputSchema"]["properties"]["update"]["default"],
+                false
+            );
+        }
+    }
 }

@@ -47,12 +47,7 @@ async fn review(
 ) -> Result<Json<serde_json::Value>, AppError> {
     book_operation(&state, "tastebase.publications.save_review").with_detail("publication.id", id.to_string())
         .observe(async {
-            let writeup = shared::sanitize::clean(&input.writeup).trim().to_owned();
-            shared::validate::validate_book_review(input.rating, &writeup)?;
-            let changed = sqlx::query("UPDATE publication_recommendations SET rating = $2, writeup = $3, updated_at = now() WHERE id = $1")
-                .bind(id).bind(input.rating).bind(writeup).execute(&state.db).await?;
-            if changed.rows_affected() == 0 { return Err(AppError::NotFound); }
-            Ok(Json(serde_json::json!({"data": shared::publications::get(&state.db, id).await?})))
+            Ok(Json(serde_json::json!({"data": shared::publications::save_review(&state.db, id, input).await?})))
         }).await
 }
 

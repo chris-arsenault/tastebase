@@ -66,15 +66,16 @@ fn recommendation_properties() -> Value {
 pub(crate) fn tool_defs() -> Vec<Value> {
     let mut patch_properties = recommendation_properties();
     patch_properties["id"] = json!({"type":"string", "format":"uuid"});
+    patch_properties["update"] = json!({"type":"boolean", "default":false});
     let mut patch_schema = object(patch_properties, &["id"]);
     patch_schema["minProperties"] = json!(2);
     vec![
-        json!({"name":"list_publication_recommendations", "description":"Read the complete public publication history, subscription options and owner feedback before recommending more publications.",
+        json!({"name":"list_publication_recommendations", "description":"Read the complete public publication history, subscription options, issues and owner feedback before recommending more publications or saving reviews.",
             "inputSchema":object(json!({"status":{"enum":["recommended","subscribed","cancelled","not_interested"]}}), &[])}),
-        json!({"name":"save_publication_recommendations", "description":"Save publications to the public bookshelf. First read recommendation history and get_publication_tag_corpus. Reuse existing tag keys and values. Identity is case-insensitive title and publisher (omitted publisher is its own identity). Re-saving replaces recommendation metadata, including subscription offers; omitted tags survive. Status, rating and writeup are never changed. Use patch by ID when correcting title or publisher.",
-            "inputSchema":object(json!({"recommendations":{"type":"array","minItems":1,"maxItems":20,
+        json!({"name":"save_publication_recommendations", "description":"Save initial publication recommendations to the public bookshelf. First read recommendation history and get_publication_tag_corpus. Reuse existing tags. Existing case-insensitive title/publisher identities are rejected unless update=true (default false); a conflict rejects the entire batch. Updating recommendations is normally incorrect: add owner reviews instead, using save_publication_issue_review for magazines. Only set update=true for explicitly requested metadata corrections. It replaces recommendation metadata including subscriptions; omitted tags, subscription status, feedback and issues survive. Use patch by ID to correct title or publisher.",
+            "inputSchema":object(json!({"update":{"type":"boolean", "default":false}, "recommendations":{"type":"array","minItems":1,"maxItems":20,
                 "items":object(recommendation_properties(), &["title","summary","why_recommended","publication_type","cadence","audience_level","subscriptions"])}}), &["recommendations"])}),
-        json!({"name":"patch_publication_recommendation", "description":"Patch publication recommendation metadata by ID. Omitted fields survive. Explicit null clears optional fields; [] clears tags or subscriptions. Supplied nested objects and arrays replace the complete existing value. Read the record first. Owner status and feedback cannot be patched. Read the shared tag corpus before changing tags.", "inputSchema":patch_schema}),
+        json!({"name":"patch_publication_recommendation", "description":"Correct publication recommendation metadata by ID only when explicitly requested, with update=true (default false). Updating recommendations is normally incorrect: add reviews instead, using save_publication_issue_review for magazines. Read the record and shared tag corpus first. Omitted fields survive; null clears optional fields; supplied nested objects and arrays replace complete values. Owner status, feedback and issues cannot be patched.", "inputSchema":patch_schema}),
         json!({"name":"get_publication_tag_corpus", "description":"Get the shared book and publication tag vocabulary. Reuse existing keys and values; category, topic, style, fit and outlook are reusable keys. Multiple outlook values are allowed. Fit and outlook alignment are separate dimensions.", "inputSchema":object(json!({}), &[])}),
     ]
 }
@@ -89,6 +90,8 @@ struct ListInput {
 #[serde(deny_unknown_fields)]
 struct SaveInput {
     recommendations: Vec<PublicationInput>,
+    #[serde(default)]
+    update: bool,
 }
 
 async fn execute(state: &AppState, name: &str, arguments: Value) -> Result<Value, AppError> {
@@ -102,7 +105,7 @@ async fn execute(state: &AppState, name: &str, arguments: Value) -> Result<Value
         "save_publication_recommendations" => {
             let input: SaveInput = serde_json::from_value(arguments).map_err(bad_input)?;
             Ok(
-                json!({"recommendations":shared::publications::save(&state.db, input.recommendations).await?, "url":"https://tastebase.ahara.io/books"}),
+                json!({"recommendations":shared::publications::save(&state.db, input.recommendations, input.update).await?, "url":"https://tastebase.ahara.io/books"}),
             )
         }
         "patch_publication_recommendation" => {
@@ -112,7 +115,12 @@ async fn execute(state: &AppState, name: &str, arguments: Value) -> Result<Value
                 .ok_or_else(|| AppError::BadRequest("arguments must be an object".into()))?;
             let id: Uuid = serde_json::from_value(fields.remove("id").unwrap_or(Value::Null))
                 .map_err(bad_input)?;
-            Ok(json!({"recommendation":shared::publications::patch(&state.db, id, fields).await?}))
+            let update: bool =
+                serde_json::from_value(fields.remove("update").unwrap_or(json!(false)))
+                    .map_err(bad_input)?;
+            Ok(
+                json!({"recommendation":shared::publications::patch(&state.db, id, fields, update).await?}),
+            )
         }
         _ => Err(AppError::BadRequest("unknown publication tool".into())),
     }

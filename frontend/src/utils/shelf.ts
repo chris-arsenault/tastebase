@@ -18,9 +18,17 @@ export const shelfStatusLabels: Record<ShelfStatus, string> = {
 };
 
 export function isReviewed(
-  item: Pick<ShelfItem, "rating" | "writeup">,
+  item: Pick<ShelfItem, "rating" | "writeup"> & {
+    issues?: Pick<ShelfItem, "rating" | "writeup">[];
+  },
 ): boolean {
-  return item.rating != null && item.writeup.trim().length > 0;
+  return (
+    (item.rating != null && item.writeup.trim().length > 0) ||
+    (item.issues?.some(
+      (issue) => issue.rating != null && issue.writeup.trim().length > 0,
+    ) ??
+      false)
+  );
 }
 
 export function creator(item: ShelfItem): string {

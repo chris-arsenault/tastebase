@@ -1,7 +1,66 @@
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
+use crate::error::AppError;
 use crate::types::{BookRecommendation, BookStatus, BookTag};
+
+pub struct PreparedBookRecommendation {
+    pub title: String,
+    pub author: String,
+    pub summary: String,
+    pub why_recommended: String,
+    pub page_count: Option<i32>,
+    pub tags: Option<Vec<BookTag>>,
+    pub purchase_link: Option<String>,
+}
+
+pub async fn save_recommendations(
+    pool: &PgPool,
+    recommendations: Vec<PreparedBookRecommendation>,
+    update: bool,
+) -> Result<Vec<BookRecommendation>, AppError> {
+    let mut transaction = pool.begin().await?;
+    let mut ids = Vec::with_capacity(recommendations.len());
+    for recommendation in recommendations {
+        let id: Option<Uuid> = sqlx::query_scalar(
+            "INSERT INTO book_recommendations
+               (id, title, author, summary, why_recommended, page_count, purchase_link)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (lower(title), lower(author)) DO UPDATE SET
+               summary = EXCLUDED.summary,
+               why_recommended = EXCLUDED.why_recommended,
+               page_count = COALESCE(EXCLUDED.page_count, book_recommendations.page_count),
+               purchase_link = COALESCE(EXCLUDED.purchase_link, book_recommendations.purchase_link),
+               updated_at = now()
+             WHERE $8 RETURNING id",
+        )
+        .bind(Uuid::new_v4())
+        .bind(recommendation.title)
+        .bind(recommendation.author)
+        .bind(recommendation.summary)
+        .bind(recommendation.why_recommended)
+        .bind(recommendation.page_count)
+        .bind(recommendation.purchase_link)
+        .bind(update)
+        .fetch_optional(&mut *transaction)
+        .await?;
+        let id = id.ok_or_else(crate::shelf_reviews::update_required)?;
+        if let Some(tags) = recommendation.tags {
+            replace_tags(&mut transaction, id, &tags).await?;
+        }
+        ids.push(id);
+    }
+    transaction.commit().await?;
+    let mut saved = Vec::with_capacity(ids.len());
+    for id in ids {
+        saved.push(
+            get_recommendation(pool, id)
+                .await?
+                .ok_or(AppError::NotFound)?,
+        );
+    }
+    Ok(saved)
+}
 
 pub async fn list_recommendations(
     pool: &PgPool,

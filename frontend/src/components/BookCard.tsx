@@ -5,8 +5,9 @@ import {
   type SyntheticEvent,
   type SubmitEvent,
 } from "react";
-import type { ShelfItem, ShelfStatus } from "../types";
+import type { PublicationIssue, ShelfItem, ShelfStatus } from "../types";
 import { PublicationDetails } from "./PublicationDetails";
+import { PublicationIssues } from "./PublicationIssues";
 import { ClampText, MetaChip, StatusDot, type SignalState } from "./signals";
 import { Tooltip } from "./Tooltip";
 import {
@@ -48,7 +49,13 @@ const statusDetail: Record<ShelfStatus, string> = {
 function ReviewMark({ book }: Readonly<{ book: ShelfItem }>) {
   if (isReviewed(book)) {
     return (
-      <Tooltip label={`Reviewed: ${book.rating} out of 5`}>
+      <Tooltip
+        label={
+          book.rating != null && book.writeup.trim()
+            ? `Reviewed: ${book.rating} out of 5`
+            : "Includes reviewed issues"
+        }
+      >
         <span className="review-mark review-mark-done">
           <span aria-hidden="true">{"✓"}</span>
           <span className="visually-hidden">Reviewed</span>
@@ -158,7 +165,7 @@ function RatingDisplay({ rating }: Readonly<{ rating: number }>) {
 }
 
 function SavedReview({ book }: Readonly<{ book: ShelfItem }>) {
-  if (book.rating == null || !isReviewed(book)) return null;
+  if (book.rating == null || !book.writeup.trim()) return null;
   return (
     <div className="book-saved-review">
       <div className="book-review-heading">
@@ -311,6 +318,7 @@ function OwnerControls({
 }
 
 const noTags: TagSelection = {};
+const noIssues: PublicationIssue[] = [];
 
 type BookCardProps = {
   book: ShelfItem;
@@ -346,10 +354,15 @@ export function BookCard({
         <ClampText text={book.whyRecommended} />
       </div>
       <SavedReview book={book} />
+      {book.kind === "publication" && (
+        <PublicationIssues issues={book.issues ?? noIssues} />
+      )}
       {editable && (
         <>
           <OwnerControls book={book} saving={saving} onStatus={onStatus} />
-          <ReviewEditor book={book} saving={saving} onReview={onReview} />
+          {(book.kind === "book" || book.publicationType !== "magazine") && (
+            <ReviewEditor book={book} saving={saving} onReview={onReview} />
+          )}
         </>
       )}
     </article>

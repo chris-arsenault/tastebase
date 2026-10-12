@@ -6,10 +6,12 @@ pub mod error;
 pub mod media;
 #[cfg(test)]
 mod publication_database_tests;
+pub mod publication_issues;
 pub mod publication_types;
 pub mod publication_validation;
 pub mod publications;
 pub mod sanitize;
+pub mod shelf_reviews;
 pub mod types;
 pub mod validate;
 

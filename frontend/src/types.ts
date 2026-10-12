@@ -201,6 +201,23 @@ export type SubscriptionOption = {
   notes: string | null;
 };
 
+export type PublicationIssue = {
+  id: string;
+  publicationId: string;
+  label: string;
+  title: string | null;
+  volume: string | null;
+  issueNumber: string | null;
+  publicationDate: string | null;
+  pageCount: number | null;
+  url: string | null;
+  summary: string | null;
+  rating: number | null;
+  writeup: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PublicationRecommendation = Pick<
   BookRecommendation,
   | "id"
@@ -231,6 +248,7 @@ export type PublicationRecommendation = Pick<
     relationship: "aligned" | "compatible" | "neutral" | "contrast" | "mixed";
   } | null;
   status: PublicationStatus;
+  issues: PublicationIssue[];
 };
 
 export type ShelfItem =

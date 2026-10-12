@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 mod books;
 mod publications;
+mod shelf_reviews;
 
 const SERVICE_NAME: &str = "tastebase-mcp-server";
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
@@ -258,6 +259,7 @@ fn handle_tools_list(msg: McpMessage) -> Result<JsonRpcResponse, JsonRpcResponse
         books::get_book_tag_corpus_tool_def(),
     ];
     tools.extend(publications::tool_defs());
+    tools.extend(shelf_reviews::tool_defs());
     tracing::info!(tool_count = tools.len(), "tools/list");
     Ok(jsonrpc_result(
         msg.id,
@@ -645,6 +647,17 @@ async fn handle_tools_call(
                 .cloned()
                 .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing arguments"))?;
             Ok(books::dispatch_patch_book_recommendation(msg.id, state, user, arguments).await)
+        }
+        "save_book_review"
+        | "save_publication_review"
+        | "list_publication_issues"
+        | "save_publication_issue"
+        | "save_publication_issue_review" => {
+            let arguments = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
+            Ok(shelf_reviews::dispatch(msg.id, state, &tool_name, arguments).await)
         }
         "get_book_tag_corpus" | "get_publication_tag_corpus" => {
             Ok(books::dispatch_get_book_tag_corpus(msg.id, state, user).await)

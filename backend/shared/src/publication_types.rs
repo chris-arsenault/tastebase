@@ -151,6 +151,7 @@ pub struct PublicationRecommendation {
     #[serde(flatten)]
     pub details: Json<PublicationDetails>,
     pub tags: Json<Vec<BookTag>>,
+    pub issues: Json<Vec<crate::publication_issues::PublicationIssue>>,
     pub status: PublicationStatus,
     pub rating: Option<i16>,
     pub writeup: String,
