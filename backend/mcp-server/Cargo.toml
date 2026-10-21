@@ -20,3 +20,6 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 time = { workspace = true }
 rust_decimal = "1"
+
+[dev-dependencies]
+aws-sdk-s3 = { workspace = true }

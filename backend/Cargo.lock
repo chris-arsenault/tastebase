@@ -2214,6 +2214,7 @@ name = "mcp-server"
 version = "0.1.0"
 dependencies = [
  "ahara-lambda-telemetry",
+ "aws-sdk-s3",
  "axum",
  "lambda_http",
  "rust_decimal",

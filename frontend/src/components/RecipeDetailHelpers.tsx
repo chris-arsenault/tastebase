@@ -3,6 +3,13 @@ import { fetchRecipe } from "../api";
 import { slugify } from "../utils/recipeText";
 import type { RecipeFull, RecipeIngredient } from "../types";
 
+export type TooltipData = {
+  linkedId: string;
+  preview: RecipeFull | null;
+  x: number;
+  y: number;
+};
+
 export function navigateToRecipe(slug: string) {
   window.history.pushState(null, "", `/recipes/${slug}`);
   window.dispatchEvent(new PopStateEvent("popstate"));

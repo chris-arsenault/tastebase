@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { deleteRecipe } from "../api";
 import { RecipeImages, RecipeReviews, ReviewCapture } from "./RecipeMedia";
 import type { RecipeFull } from "../types";
+import { RecipeVariations } from "./RecipeVariations";
+import { useRecipeVariations } from "../hooks/useRecipeVariations";
 import { renderMarkdown, slugify } from "../utils/recipeText";
 import {
   sourceLabels,
@@ -12,6 +14,7 @@ import {
   resolveTokens,
   LinkedIngredientRow,
   LinkedTooltip,
+  type TooltipData,
 } from "./RecipeDetailHelpers";
 
 type RecipeDetailProps = {
@@ -165,13 +168,6 @@ function RecipeSteps({
   );
 }
 
-type TooltipData = {
-  linkedId: string;
-  preview: RecipeFull | null;
-  x: number;
-  y: number;
-};
-
 function useLinkedTooltip(
   cache: React.MutableRefObject<Map<string, RecipeFull>>,
 ) {
@@ -244,6 +240,8 @@ function RecipeBody({
   onReviewSubmitted: () => void;
 }>) {
   const [servings, setServings] = useState(recipe.baseServings);
+  const { groups, selection, ingredients, steps, changeVariation } =
+    useRecipeVariations(recipe);
   const scale = servings / recipe.baseServings;
   const linkedRecipeCache = useRef(new Map<string, RecipeFull>());
   const { tooltip, show, hide } = useLinkedTooltip(linkedRecipeCache);
@@ -260,14 +258,19 @@ function RecipeBody({
         servings={servings}
         onServingsChange={setServings}
       />
+      <RecipeVariations
+        groups={groups}
+        selection={selection}
+        onChange={changeVariation}
+      />
       <RecipeIngredients
-        ingredients={recipe.ingredients}
+        ingredients={ingredients}
         scale={scale}
         linkedRecipeCache={linkedRecipeCache}
       />
       <RecipeSteps
-        steps={recipe.steps}
-        ingredients={recipe.ingredients}
+        steps={steps}
+        ingredients={ingredients}
         linkedRecipeCache={linkedRecipeCache}
       />
       {recipe.notes && (
@@ -395,6 +398,7 @@ export function RecipeDetail({
         {error && <div className="error-banner">{error}</div>}
         {recipe && (
           <RecipeBody
+            key={recipe.id}
             recipe={recipe}
             selectedReviewId={selectedReviewId}
             token={token}

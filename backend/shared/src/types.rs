@@ -228,6 +228,7 @@ pub struct Recipe {
     pub source_meta: Option<sqlx::types::Json<serde_json::Value>>,
     pub version: i32,
     pub version_group_id: Uuid,
+    pub variation_groups: sqlx::types::Json<Vec<crate::recipe_variations::VariationGroup>>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -247,6 +248,7 @@ pub struct RecipeWithThumb {
     pub source_meta: Option<sqlx::types::Json<serde_json::Value>>,
     pub version: i32,
     pub version_group_id: Uuid,
+    pub variation_groups: sqlx::types::Json<Vec<crate::recipe_variations::VariationGroup>>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -267,6 +269,8 @@ pub struct RecipeIngredient {
     pub unit: UnitType,
     pub sort_order: i32,
     pub linked_recipe_id: Option<Uuid>,
+    #[sqlx(rename = "applies_when")]
+    pub when: sqlx::types::Json<crate::recipe_variations::VariationCondition>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -279,6 +283,8 @@ pub struct RecipeStep {
     pub content: String,
     pub timer_seconds: Option<i32>,
     pub sort_order: i32,
+    #[sqlx(rename = "applies_when")]
+    pub when: sqlx::types::Json<crate::recipe_variations::VariationCondition>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

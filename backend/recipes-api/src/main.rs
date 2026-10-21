@@ -5,6 +5,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use shared::AppState;
 use shared::error::AppError;
+use shared::recipe_variations::{self, VariationCondition, VariationGroup};
 use shared::types::{
     Recipe, RecipeFull, RecipeImage, RecipeIngredient, RecipeReview, RecipeSource, RecipeStep,
     RecipeWithThumb, UnitType,
@@ -116,6 +117,8 @@ struct CreateRecipeInput {
     source_meta: Option<serde_json::Value>,
     ingredients: Vec<IngredientInput>,
     steps: Vec<StepInput>,
+    #[serde(default)]
+    variation_groups: Vec<VariationGroup>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,6 +130,8 @@ struct IngredientInput {
     amount: f64,
     unit: Option<UnitType>,
     linked_recipe_id: Option<Uuid>,
+    #[serde(default)]
+    when: VariationCondition,
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,6 +141,8 @@ struct StepInput {
     title: String,
     content: String,
     timer_seconds: Option<i32>,
+    #[serde(default)]
+    when: VariationCondition,
 }
 
 async fn create_recipe(
@@ -160,6 +167,11 @@ async fn create_recipe(
             )?;
 
             let title = shared::sanitize::clean(&input.title);
+            recipe_variations::validate_content(
+                &input.variation_groups,
+                input.ingredients.iter().map(|ing| (ing.id.as_str(), &ing.when)),
+                input.steps.iter().map(|step| (step.id.as_str(), step.content.as_str(), &step.when)),
+            )?;
             let description = shared::sanitize::clean_option(input.description.as_deref());
             let notes = shared::sanitize::clean_option(input.notes.as_deref());
 
@@ -170,8 +182,8 @@ async fn create_recipe(
             let mut tx = state.db.begin().await?;
 
             sqlx::query(
-                "INSERT INTO recipes (id, title, description, base_servings, notes, source, source_meta, version, version_group_id, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $1, $8, $8)",
+                "INSERT INTO recipes (id, title, description, base_servings, notes, source, source_meta, version, version_group_id, created_at, updated_at, variation_groups)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $1, $8, $8, $9)",
             )
             .bind(recipe_id)
             .bind(&title)
@@ -181,6 +193,7 @@ async fn create_recipe(
             .bind(source)
             .bind(input.source_meta.as_ref().map(sqlx::types::Json))
             .bind(now)
+            .bind(sqlx::types::Json(&input.variation_groups))
             .execute(&mut *tx)
             .await?;
 
@@ -189,8 +202,8 @@ async fn create_recipe(
                 let name = shared::sanitize::clean(&ing.name);
                 let short_name = shared::sanitize::clean_or_empty(ing.short_name.as_deref());
                 sqlx::query(
-                    "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                    "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id, applies_when)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
                 )
                 .bind(recipe_id)
                 .bind(&ing.id)
@@ -200,6 +213,7 @@ async fn create_recipe(
                 .bind(unit)
                 .bind(i as i32)
                 .bind(ing.linked_recipe_id)
+                .bind(sqlx::types::Json(&ing.when))
                 .execute(&mut *tx)
                 .await?;
             }
@@ -208,8 +222,8 @@ async fn create_recipe(
                 let step_title = shared::sanitize::clean(&step.title);
                 let content = shared::sanitize::clean(&step.content);
                 sqlx::query(
-                    "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order)
-                     VALUES ($1, $2, $3, $4, $5, $6)",
+                    "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order, applies_when)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)",
                 )
                 .bind(recipe_id)
                 .bind(&step.id)
@@ -217,6 +231,7 @@ async fn create_recipe(
                 .bind(&content)
                 .bind(step.timer_seconds)
                 .bind(i as i32)
+                .bind(sqlx::types::Json(&step.when))
                 .execute(&mut *tx)
                 .await?;
             }

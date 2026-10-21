@@ -15,6 +15,77 @@ Personal tasting, recipe, and reading platform with Claude.ai and ChatGPT MCP in
 - **Media**: S3 for images and voice recordings
 - **Auth**: Cognito (shared platform pool)
 
+## Recipe variations
+
+Recipes can define independent variation groups. For yogurt, a **Style** dropdown
+can offer Greek and Skyr while **Flavor** offers Plain, Peach and Cherry. These
+produce six combinations without storing six recipes. Selecting either dropdown
+updates the ingredient list and directions immediately; serving scaling still
+applies to the visible ingredients.
+
+Use `save_recipe` or `update_recipe` through MCP. Add `variation_groups` like:
+
+```json
+[
+  {
+    "id": "style",
+    "label": "Style",
+    "default": "greek",
+    "options": [
+      { "id": "greek", "label": "Greek" },
+      { "id": "skyr", "label": "Skyr" }
+    ]
+  },
+  {
+    "id": "flavor",
+    "label": "Flavor",
+    "default": "plain",
+    "options": [
+      { "id": "plain", "label": "Plain" },
+      { "id": "peach", "label": "Peach" },
+      { "id": "cherry", "label": "Cherry" }
+    ]
+  }
+]
+```
+
+Keep common ingredients and steps once, without a `when` field. For content that
+varies, add `when` to the ingredient or step:
+
+- `{"style":"greek"}` for the Greek starter ingredient and its culture-specific directions;
+- `{"style":"skyr"}` for the Skyr equivalents;
+- `{"flavor":"peach"}` for peaches and their preparation and mixing steps;
+- `{"flavor":"cherry"}` for cherries and their preparation and mixing steps.
+
+Plain needs no fruit rows. A condition can require several selections together,
+for example `{"style":"skyr","flavor":"peach"}`; all entries must match. Each
+group independently selects exactly one option, initially its `default`.
+
+Every ingredient and step needs its own unique `id`, including alternatives.
+Put alternatives at the position where they belong in the full ordered list;
+the app hides unmatched rows and numbers the visible steps consecutively.
+Amounts, ingredient names, instructions and timers belong to their respective
+conditional rows. A step using `{ingredient_id}` for a conditional ingredient
+must carry that ingredient's conditions so the reference is always visible.
+
+Call `list_recipes` to find a recipe, then `get_recipe` to read its full content
+and variation groups before updating. MCP reads use camelCase (`variationGroups`,
+`widgetId`, `shortName`, `timerSeconds`); writes use snake_case
+(`variation_groups`, `id`, `short_name`, `timer_seconds`). `when`, group IDs and
+option IDs are the same in both. HTTP recipe creation uses camelCase.
+
+Updates preserve omitted variation groups, ingredients and steps; supplied lists
+replace the entire corresponding list. To remove groups, send
+`variation_groups: []` and replace any ingredients and steps whose conditions use
+those groups. Invalid references reject the whole update. `new_version: true`
+preserves the previous recipe and copies omitted variation content into the new
+version. Old recipes without variations retain their existing presentation.
+
+Apply migration `017_recipe_variations.sql` before deploying the updated Lambdas
+and frontend. It adds empty groups and unconditional content defaults to existing
+recipes. This changes recipe authoring and display; it does not add a browser
+recipe import form.
+
 ## Book recommendations
 
 Connect Claude.ai to the Tastebase MCP server, then ask for book recommendations. Claude can:
@@ -71,7 +142,7 @@ Migration `016` adds `publication_issues` with separate issue metadata and feedb
 
 ## Validation
 
-Run `make ci` for lint, formatting, TypeScript, Rust unit tests, frontend tests and Terraform formatting. `cd backend && cargo test -p mcp-server --bin mcp-server` checks MCP tool schemas and input defaults. Frontend tests cover reviewed filtering, issue feedback and public/owner rendering. `db/tests/public_shelf.sql` checks migration behavior in a disposable PostgreSQL database. The ignored Rust test `publication_database_round_trip` exercises recommendation update guards, batch rollback, issue metadata merging and book/issue review persistence:
+Run `make ci` for lint, formatting, TypeScript, Rust unit tests, frontend tests and Terraform formatting. `cd backend && cargo test -p mcp-server --bin mcp-server` checks MCP tool schemas, input defaults and variation validation. Frontend tests cover recipe variation combinations and selectors, reviewed filtering, issue feedback and public/owner rendering. `db/tests/public_shelf.sql` checks migration behavior in a disposable PostgreSQL database. The ignored Rust test `publication_database_round_trip` exercises recommendation update guards, batch rollback, issue metadata merging and book/issue review persistence:
 
 ```bash
 cd backend
@@ -79,6 +150,15 @@ TASTEBASE_TEST_DATABASE_URL=postgres://postgres@localhost/tastebase_test cargo t
 ```
 
 Use a disposable local database. If it requires a secret, supply the URL through environment variables; in the Sulion environment, run the command through `with-cred --`.
+
+`recipe_variations_database_round_trip` checks recipe migration defaults, saves,
+reads, partial updates, invalid-update rollback, and version preservation. Run
+it against an empty disposable database; the test installs recipe migrations:
+
+```bash
+cd backend
+TASTEBASE_TEST_DATABASE_URL=postgres://postgres@localhost/tastebase_test cargo test -p mcp-server --bin mcp-server recipe_variations_database_round_trip -- --ignored
+```
 
 ## URLs
 

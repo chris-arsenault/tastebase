@@ -1936,6 +1936,42 @@
   font-variant-numeric: tabular-nums;
 }
 
+.recipe-variations {
+  margin: 0;
+  border: 1px solid var(--worn);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem 1rem;
+}
+
+.recipe-variations legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+}
+
+.recipe-variation-selectors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+
+.recipe-variation-selectors label {
+  display: flex;
+  flex: 1 1 10rem;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.recipe-variation-selectors select {
+  min-height: 44px;
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--worn);
+  border-radius: var(--radius-md);
+  background: var(--cream);
+  color: var(--char);
+  font: inherit;
+}
+
 .servings-btn.btn-icon {
   width: 32px;
   height: 32px;

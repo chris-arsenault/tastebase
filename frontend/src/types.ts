@@ -84,6 +84,15 @@ export type Filters = {
 // Recipe types
 export type RecipeSource = "claude" | "manual" | "import";
 
+export type RecipeVariationGroup = {
+  id: string;
+  label: string;
+  default: string;
+  options: { id: string; label: string }[];
+};
+
+export type VariationSelection = Record<string, string>;
+
 export type Recipe = {
   id: string;
   userId: string;
@@ -93,6 +102,7 @@ export type Recipe = {
   notes: string | null;
   source: RecipeSource;
   sourceMeta: Record<string, unknown> | null;
+  variationGroups?: RecipeVariationGroup[];
   thumbnailUrl?: string | null;
   latestScore?: number | null;
   createdAt: string;
@@ -109,6 +119,7 @@ export type RecipeIngredient = {
   unit: string;
   sortOrder: number;
   linkedRecipeId?: string | null;
+  when?: VariationSelection;
 };
 
 export type RecipeStep = {
@@ -119,6 +130,7 @@ export type RecipeStep = {
   content: string;
   timerSeconds: number | null;
   sortOrder: number;
+  when?: VariationSelection;
 };
 
 export type RecipeReview = {

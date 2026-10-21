@@ -10,6 +10,7 @@ pub mod publication_issues;
 pub mod publication_types;
 pub mod publication_validation;
 pub mod publications;
+pub mod recipe_variations;
 pub mod sanitize;
 pub mod shelf_reviews;
 pub mod types;

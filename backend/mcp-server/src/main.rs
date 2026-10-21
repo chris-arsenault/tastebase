@@ -8,11 +8,15 @@ use serde::{Deserialize, Serialize};
 use shared::AppState;
 use shared::auth;
 use shared::error::AppError;
+use shared::recipe_variations::{self, VariationCondition, VariationGroup};
 use shared::types::{RecipeSource, UnitType};
 use uuid::Uuid;
 
 mod books;
 mod publications;
+mod recipe_read;
+#[cfg(test)]
+mod recipe_tests;
 mod shelf_reviews;
 
 const SERVICE_NAME: &str = "tastebase-mcp-server";
@@ -251,6 +255,7 @@ fn handle_ping(msg: McpMessage) -> Result<JsonRpcResponse, JsonRpcResponse> {
 fn handle_tools_list(msg: McpMessage) -> Result<JsonRpcResponse, JsonRpcResponse> {
     let mut tools = vec![
         list_recipes_tool_def(),
+        recipe_read::tool_def(),
         save_recipe_tool_def(),
         update_recipe_tool_def(),
         books::list_book_recommendations_tool_def(),
@@ -306,8 +311,9 @@ fn save_recipe_tool_def() -> serde_json::Value {
                 },
                 "notes": {
                     "type": "string",
-                    "description": "Markdown-formatted tips, variations, and notes. Use **bold** for emphasis and \\n for line breaks."
+                    "description": "Markdown-formatted tips and general notes. Use **bold** for emphasis and \\n for line breaks. For selectable variations use variation_groups and conditional ingredients/steps instead."
                 },
+                "variation_groups": recipe_variations::groups_schema(),
                 "ingredients": {
                     "type": "array",
                     "description": "All ingredients used in the recipe. Each must have a unique id (e.g. '0001', '0002') that is referenced in step content as {0001}.",
@@ -335,6 +341,7 @@ fn save_recipe_tool_def() -> serde_json::Value {
                                 "type": "string",
                                 "description": "Unit of measurement. Must be one of: g, kg, ml, l, tsp, tbsp, cup, fl_oz, oz, lb, pinch, piece, or empty string for unitless items (e.g. '2 lemons')."
                             },
+                            "when": recipe_variations::condition_schema(),
                             "linked_recipe_id": {
                                 "type": "string",
                                 "description": "Optional UUID of another recipe that this ingredient refers to. Use list_recipes to find the ID. Example: if this ingredient is '1 cup olive tapenade' and there's already a tapenade recipe saved, pass its ID here to link them."
@@ -361,6 +368,7 @@ fn save_recipe_tool_def() -> serde_json::Value {
                                 "type": "string",
                                 "description": "Full step instructions. Reference ingredients using {ingredient_id} tokens (e.g. 'Mince {0004} finely and combine with {0006}'). These tokens are resolved to ingredient short names in the app."
                             },
+                            "when": recipe_variations::condition_schema(),
                             "timer_seconds": {
                                 "type": "integer",
                                 "description": "Optional timer duration in seconds for this step. Omit if no specific timing is needed."
@@ -376,7 +384,7 @@ fn save_recipe_tool_def() -> serde_json::Value {
 fn update_recipe_tool_def() -> serde_json::Value {
     serde_json::json!({
         "name": "update_recipe",
-        "description": "Update an existing recipe. Only provide the fields you want to change — omitted fields are left unchanged. When providing ingredients or steps, the full list replaces the existing one. Set new_version to true to create a new version (preserving the previous one) instead of overwriting.",
+        "description": "Update an existing recipe. Read it with get_recipe first. Only provide the fields you want to change — omitted fields are left unchanged. Supplied ingredients, steps, and variation_groups each replace the full corresponding list. Set new_version to true to create a new version (preserving the previous one) instead of overwriting.",
         "inputSchema": {
             "type": "object",
             "required": ["recipe_id"],
@@ -406,6 +414,7 @@ fn update_recipe_tool_def() -> serde_json::Value {
                     "type": "string",
                     "description": "New markdown-formatted notes"
                 },
+                "variation_groups": recipe_variations::groups_schema(),
                 "ingredients": {
                     "type": "array",
                     "description": "Full replacement ingredient list. If provided, replaces ALL existing ingredients.",
@@ -433,6 +442,7 @@ fn update_recipe_tool_def() -> serde_json::Value {
                                 "type": "string",
                                 "description": "Unit: g, kg, ml, l, tsp, tbsp, cup, fl_oz, oz, lb, pinch, piece, or empty string"
                             },
+                            "when": recipe_variations::condition_schema(),
                             "linked_recipe_id": {
                                 "type": "string",
                                 "description": "Optional UUID of a linked recipe"
@@ -459,6 +469,7 @@ fn update_recipe_tool_def() -> serde_json::Value {
                                 "type": "string",
                                 "description": "Full step instructions with {ingredient_id} references"
                             },
+                            "when": recipe_variations::condition_schema(),
                             "timer_seconds": {
                                 "type": "integer",
                                 "description": "Optional timer duration in seconds"
@@ -620,6 +631,13 @@ async fn handle_tools_call(
                 .ok_or_else(|| jsonrpc_error(msg.id.clone(), -32602, "missing arguments"))?;
             Ok(dispatch_save_recipe(msg.id, state, user, arguments).await)
         }
+        "get_recipe" => {
+            let arguments = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
+            Ok(recipe_read::dispatch(msg.id, state, arguments).await)
+        }
         "update_recipe" => {
             let arguments = params
                 .get("arguments")
@@ -689,6 +707,8 @@ struct SaveRecipeParams {
     notes: String,
     ingredients: Vec<IngredientParam>,
     steps: Vec<StepParam>,
+    #[serde(default)]
+    variation_groups: Vec<VariationGroup>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -699,6 +719,8 @@ struct IngredientParam {
     amount: f64,
     unit: String,
     linked_recipe_id: Option<String>,
+    #[serde(default)]
+    when: VariationCondition,
 }
 
 #[derive(Debug, Deserialize)]
@@ -707,6 +729,8 @@ struct StepParam {
     title: String,
     content: String,
     timer_seconds: Option<i32>,
+    #[serde(default)]
+    when: VariationCondition,
 }
 
 async fn list_recipes(
@@ -762,14 +786,25 @@ async fn save_recipe(
     _user: &shared::types::UserContext,
     params: SaveRecipeParams,
 ) -> Result<serde_json::Value, AppError> {
+    recipe_variations::validate_content(
+        &params.variation_groups,
+        params
+            .ingredients
+            .iter()
+            .map(|ing| (ing.id.as_str(), &ing.when)),
+        params
+            .steps
+            .iter()
+            .map(|step| (step.id.as_str(), step.content.as_str(), &step.when)),
+    )?;
     let recipe_id = Uuid::new_v4();
     let now = time::OffsetDateTime::now_utc();
 
     let mut tx = state.db.begin().await?;
 
     sqlx::query(
-        "INSERT INTO recipes (id, title, description, base_servings, notes, source, version, version_group_id, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 1, $1, $7, $7)",
+        "INSERT INTO recipes (id, title, description, base_servings, notes, source, version, version_group_id, created_at, updated_at, variation_groups)
+         VALUES ($1, $2, $3, $4, $5, $6, 1, $1, $7, $7, $8)",
     )
     .bind(recipe_id)
     .bind(&params.title)
@@ -778,42 +813,12 @@ async fn save_recipe(
     .bind(&params.notes)
     .bind(RecipeSource::Claude)
     .bind(now)
+    .bind(sqlx::types::Json(&params.variation_groups))
     .execute(&mut *tx)
     .await?;
 
-    for (i, ing) in params.ingredients.iter().enumerate() {
-        let unit = parse_unit(&ing.unit).unwrap_or(UnitType::None);
-        let linked_id: Option<Uuid> = ing.linked_recipe_id.as_deref().and_then(|s| s.parse().ok());
-        sqlx::query(
-            "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-        )
-        .bind(recipe_id)
-        .bind(&ing.id)
-        .bind(&ing.name)
-        .bind(&ing.short_name)
-        .bind(rust_decimal::Decimal::try_from(ing.amount).unwrap_or_default())
-        .bind(unit)
-        .bind(i as i32)
-        .bind(linked_id)
-        .execute(&mut *tx)
-        .await?;
-    }
-
-    for (i, step) in params.steps.iter().enumerate() {
-        sqlx::query(
-            "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order)
-             VALUES ($1, $2, $3, $4, $5, $6)",
-        )
-        .bind(recipe_id)
-        .bind(&step.id)
-        .bind(&step.title)
-        .bind(&step.content)
-        .bind(step.timer_seconds)
-        .bind(i as i32)
-        .execute(&mut *tx)
-        .await?;
-    }
+    insert_recipe_ingredients(&mut tx, recipe_id, &params.ingredients).await?;
+    insert_recipe_steps(&mut tx, recipe_id, &params.steps).await?;
 
     tx.commit().await?;
 
@@ -838,6 +843,7 @@ struct UpdateRecipeParams {
     notes: Option<String>,
     ingredients: Option<Vec<IngredientParam>>,
     steps: Option<Vec<StepParam>>,
+    variation_groups: Option<Vec<VariationGroup>>,
 }
 
 struct LatestRecipeRow {
@@ -907,8 +913,8 @@ async fn copy_ingredients(
     latest_id: Uuid,
 ) -> Result<(), AppError> {
     sqlx::query(
-        "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
-         SELECT $1, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id
+        "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id, applies_when)
+         SELECT $1, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id, applies_when
          FROM recipe_ingredients WHERE recipe_id = $2 ORDER BY sort_order",
     )
     .bind(new_id)
@@ -924,8 +930,8 @@ async fn copy_steps(
     latest_id: Uuid,
 ) -> Result<(), AppError> {
     sqlx::query(
-        "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order)
-         SELECT $1, widget_id, title, content, timer_seconds, sort_order
+        "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order, applies_when)
+         SELECT $1, widget_id, title, content, timer_seconds, sort_order, applies_when
          FROM recipe_steps WHERE recipe_id = $2 ORDER BY sort_order",
     )
     .bind(new_id)
@@ -1025,8 +1031,8 @@ async fn insert_recipe_ingredients(
         let unit = parse_unit(&ing.unit).unwrap_or(UnitType::None);
         let linked_id: Option<Uuid> = ing.linked_recipe_id.as_deref().and_then(|s| s.parse().ok());
         sqlx::query(
-            "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            "INSERT INTO recipe_ingredients (recipe_id, widget_id, name, short_name, amount, unit, sort_order, linked_recipe_id, applies_when)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
         .bind(target_id)
         .bind(&ing.id)
@@ -1036,6 +1042,7 @@ async fn insert_recipe_ingredients(
         .bind(unit)
         .bind(i as i32)
         .bind(linked_id)
+        .bind(sqlx::types::Json(&ing.when))
         .execute(&mut **tx)
         .await?;
     }
@@ -1049,8 +1056,8 @@ async fn insert_recipe_steps(
 ) -> Result<(), AppError> {
     for (i, step) in steps.iter().enumerate() {
         sqlx::query(
-            "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order)
-             VALUES ($1, $2, $3, $4, $5, $6)",
+            "INSERT INTO recipe_steps (recipe_id, widget_id, title, content, timer_seconds, sort_order, applies_when)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
         .bind(target_id)
         .bind(&step.id)
@@ -1058,6 +1065,7 @@ async fn insert_recipe_steps(
         .bind(&step.content)
         .bind(step.timer_seconds)
         .bind(i as i32)
+        .bind(sqlx::types::Json(&step.when))
         .execute(&mut **tx)
         .await?;
     }
@@ -1092,6 +1100,15 @@ async fn update_recipe(
 
     let now = time::OffsetDateTime::now_utc();
     let mut tx = state.db.begin().await?;
+    let existing_groups: sqlx::types::Json<Vec<VariationGroup>> =
+        sqlx::query_scalar("SELECT variation_groups FROM recipes WHERE id = $1 FOR UPDATE")
+            .bind(latest.id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let groups = params
+        .variation_groups
+        .as_ref()
+        .unwrap_or(&existing_groups.0);
 
     let target_id = if params.new_version {
         create_new_recipe_version(
@@ -1130,6 +1147,13 @@ async fn update_recipe(
         insert_recipe_steps(&mut tx, target_id, steps).await?;
     }
 
+    sqlx::query("UPDATE recipes SET variation_groups = $1 WHERE id = $2")
+        .bind(sqlx::types::Json(groups))
+        .bind(target_id)
+        .execute(&mut *tx)
+        .await?;
+    validate_saved_variations(&mut tx, target_id, groups).await?;
+
     tx.commit().await?;
 
     let slug = slugify(final_title);
@@ -1139,6 +1163,32 @@ async fn update_recipe(
         "url": url,
         "message": if params.new_version { "New version created." } else { "Recipe updated." }
     }))
+}
+
+async fn validate_saved_variations(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    id: Uuid,
+    groups: &[VariationGroup],
+) -> Result<(), AppError> {
+    let ingredients: Vec<shared::types::RecipeIngredient> =
+        sqlx::query_as("SELECT * FROM recipe_ingredients WHERE recipe_id = $1")
+            .bind(id)
+            .fetch_all(&mut **tx)
+            .await?;
+    let steps: Vec<shared::types::RecipeStep> =
+        sqlx::query_as("SELECT * FROM recipe_steps WHERE recipe_id = $1")
+            .bind(id)
+            .fetch_all(&mut **tx)
+            .await?;
+    recipe_variations::validate_content(
+        groups,
+        ingredients
+            .iter()
+            .map(|ing| (ing.widget_id.as_str(), &ing.when.0)),
+        steps
+            .iter()
+            .map(|step| (step.widget_id.as_str(), step.content.as_str(), &step.when.0)),
+    )
 }
 
 fn slugify(title: &str) -> String {
