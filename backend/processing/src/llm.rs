@@ -7,7 +7,8 @@ pub fn build_text_prompt(instructions: &str, input: &str) -> Value {
     serde_json::json!({
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 600,
-        "temperature": 0.2,
+        "thinking": {"type": "disabled"},
+        "output_config": {"effort": "low"},
         "messages": [{
             "role": "user",
             "content": [
@@ -23,7 +24,8 @@ pub fn build_vision_prompt(instructions: &str, image_base64: &str, image_mime_ty
     serde_json::json!({
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 800,
-        "temperature": 0.2,
+        "thinking": {"type": "disabled"},
+        "output_config": {"effort": "low"},
         "messages": [{
             "role": "user",
             "content": [

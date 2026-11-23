@@ -396,7 +396,7 @@ async fn main() -> Result<(), Error> {
     let db = shared::db::connect().await;
     let media_bucket = std::env::var("MEDIA_BUCKET").expect("MEDIA_BUCKET required");
     let bedrock_model_id = std::env::var("BEDROCK_MODEL_ID")
-        .unwrap_or_else(|_| "us.anthropic.claude-haiku-4-5-20251001-v1:0".into());
+        .unwrap_or_else(|_| "us.anthropic.claude-haiku-5-5".into());
 
     let ctx = Ctx {
         telemetry: telemetry.clone(),

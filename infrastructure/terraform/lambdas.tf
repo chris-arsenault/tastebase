@@ -101,6 +101,6 @@ module "processing" {
   vpc = module.ctx.vpc
 
   environment = merge(local.common_env, {
-    BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-5-5"
   })
 }
